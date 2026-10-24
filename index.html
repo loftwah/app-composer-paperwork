@@ -308,6 +308,7 @@
       aria-label="Document actions"
     >
       <div id="compact-actions" class="compact-actions"></div>
+      <button id="properties">Document properties</button>
       <button id="reuse" hidden>Place signature again</button>
       <button id="clear-field" hidden>Clear field</button>
       <a href="/help.html" target="_blank" rel="noopener">Help &amp; privacy</a>
@@ -319,6 +320,70 @@
         >Built with App Composer</a
       >
     </section>
+    <dialog
+      id="properties-dialog"
+      class="properties-dialog"
+      aria-labelledby="properties-title"
+      aria-describedby="properties-intro"
+    >
+      <form id="properties-form">
+        <h2 id="properties-title">Document properties</h2>
+        <p id="properties-intro">
+          The details PDF readers show about your file. Changes travel with the
+          saved PDF.
+        </p>
+        <div class="properties-fields">
+          <label for="property-title">Title</label>
+          <textarea
+            id="property-title"
+            name="title"
+            rows="1"
+            maxlength="4096"
+            autofocus
+          ></textarea>
+          <label for="property-author">Author</label>
+          <textarea
+            id="property-author"
+            name="author"
+            rows="1"
+            maxlength="4096"
+          ></textarea>
+          <label for="property-subject">Subject</label>
+          <textarea
+            id="property-subject"
+            name="subject"
+            rows="2"
+            maxlength="4096"
+          ></textarea>
+          <label for="property-keywords">Keywords</label>
+          <textarea
+            id="property-keywords"
+            name="keywords"
+            rows="1"
+            maxlength="4096"
+          ></textarea>
+        </div>
+        <details class="properties-technical">
+          <summary>Technical details</summary>
+          <dl id="property-details"></dl>
+          <p id="property-xmp"></p>
+        </details>
+        <p class="properties-note">
+          Applying changes removes embedded XMP to avoid conflicting values.
+          Clearing properties also removes creator, producer, dates and custom
+          document properties. Page content, attachments and metadata elsewhere
+          in the PDF are unchanged.
+        </p>
+        <p id="properties-feedback" role="status" aria-live="polite"></p>
+        <div class="properties-actions">
+          <button type="button" id="clear-properties">Clear properties</button>
+          <div>
+            <button type="button" id="cancel-properties">Cancel</button>
+            <button type="submit" class="primary">Apply changes</button>
+          </div>
+        </div>
+      </form>
+    </dialog>
     <section
       id="shortcuts"
       class="shortcuts-panel"

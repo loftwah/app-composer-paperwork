@@ -19,6 +19,7 @@ import {
 import fontkit from "@pdf-lib/fontkit";
 import type { OpenDocument, Snapshot } from "./document.ts";
 import { safeText, lines } from "./text.ts";
+import { writeMetadata } from "./metadata.ts";
 function color(hex: string) {
   return rgb(
     parseInt(hex.slice(1, 3), 16) / 255,
@@ -95,6 +96,7 @@ export async function exportDocument(
       );
   }
   const pdf = await PDFDocument.load(doc.bytes, { updateMetadata: false });
+  if (state.metadata) writeMetadata(pdf, state.metadata);
   pdf.registerFontkit(fontkit);
   const font = await pdf.embedFont(doc.fontBytes, { subset: true });
   const form = pdf.getForm();

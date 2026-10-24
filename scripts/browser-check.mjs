@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import assert from "node:assert/strict";
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument, PDFName, PDFString } from "pdf-lib";
 const output = path.resolve(
   process.env.PAPERWORK_EVIDENCE || "output/acceptance",
 );
@@ -529,6 +529,197 @@ try {
   );
   receipt.checks.no_document_egress_or_persistence = "pass";
   writeFileSync(output + "/network.json", JSON.stringify(requests, null, 2));
+  // Properties use the same history/export model. Derive the regression in
+  // memory from the actual completed corpus; never change the owner fixture.
+  const metadataSource = await PDFDocument.load(completedBytes, {
+    updateMetadata: false,
+  });
+  metadataSource.setTitle("Fictional source title");
+  metadataSource.setAuthor("Original fictional author");
+  metadataSource.setCreator("Fictional Fixture Maker");
+  metadataSource.context
+    .lookup(metadataSource.context.trailerInfo.Info)
+    .set(
+      PDFName.of("FictionalCustom"),
+      PDFString.of("Fictional private property"),
+    );
+  const xml =
+    '<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:creator><rdf:Seq><rdf:li>FICTIONAL_XMP_AUTHOR_489</rdf:li></rdf:Seq></dc:creator></rdf:Description></rdf:RDF></x:xmpmeta>';
+  metadataSource.catalog.set(
+    PDFName.of("Metadata"),
+    metadataSource.context.register(
+      metadataSource.context.stream(xml, { Type: "Metadata", Subtype: "XML" }),
+    ),
+  );
+  await page.locator("#pdf-file").setInputFiles({
+    name: "Fictional metadata.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from(await metadataSource.save()),
+  });
+  await page.waitForFunction(
+    () =>
+      document.querySelector("#page").dataset.rendered === "0" &&
+      document.querySelector("#page").getAttribute("aria-busy") === "false",
+  );
+  const openProperties = async (target) => {
+    await target.locator("#more-actions").click();
+    await target.locator("#properties").click();
+    await target.locator("#properties-dialog").waitFor({ state: "visible" });
+  };
+  await openProperties(page);
+  assert.equal(
+    await page.locator("#property-author").inputValue(),
+    "Original fictional author",
+  );
+  assert(
+    (await page.locator("#property-details").textContent()).includes(
+      "FICTIONAL_XMP_AUTHOR_489",
+    ),
+  );
+  await page.evaluate(
+    (bytes) => {
+      const transfer = new DataTransfer();
+      transfer.items.add(
+        new File([new Uint8Array(bytes)], "Another fictional PDF.pdf", {
+          type: "application/pdf",
+        }),
+      );
+      window.dispatchEvent(
+        new DragEvent("drop", { bubbles: true, dataTransfer: transfer }),
+      );
+    },
+    Array.from(readFileSync(file)),
+  );
+  assert(
+    (await page.locator("#properties-feedback").textContent()).includes(
+      "Apply or cancel",
+    ),
+  );
+  assert.equal(
+    await page.locator("#filename").textContent(),
+    "Fictional metadata.pdf",
+  );
+  await page.locator("#clear-properties").click();
+  await page.locator("#cancel-properties").click();
+  assert.equal(
+    (await page.locator("#document-state span").textContent()).trim(),
+    "Ready to edit",
+  );
+  await openProperties(page);
+  assert.equal(
+    await page.locator("#property-author").inputValue(),
+    "Original fictional author",
+  );
+  const properties = {
+    title: "Résumé 日本語 ✨",
+    author: "Alex Example",
+    subject: "Fictional note\nSecond line",
+    keywords: "synthetic, demo; café",
+  };
+  for (const [key, value] of Object.entries(properties))
+    await page.locator("#property-" + key).fill(value);
+  await page.screenshot({ path: output + "/properties-desktop-dark.png" });
+  await page.locator('#properties-dialog button[type="submit"]').click();
+  assert(
+    (await page.locator("#document-state").textContent()).includes("Unsaved"),
+  );
+  assert.equal(await page.title(), publicTitle);
+  const metadataDownload = page.waitForEvent("download");
+  await page.locator("#save").click();
+  const metadataPath = output + "/properties-completed.pdf";
+  await (await metadataDownload).saveAs(metadataPath);
+  const metadataBytes = readFileSync(metadataPath);
+  const metadataPdf = await PDFDocument.load(metadataBytes, {
+    updateMetadata: false,
+  });
+  for (const [key, value] of Object.entries(properties))
+    assert.equal(
+      metadataPdf["get" + key[0].toUpperCase() + key.slice(1)](),
+      value,
+    );
+  assert.equal(metadataPdf.getCreator(), "Fictional Fixture Maker");
+  assert(!metadataPdf.catalog.has(PDFName.of("Metadata")));
+  assert(!metadataBytes.includes(Buffer.from("FICTIONAL_XMP_AUTHOR_489")));
+  for (const key of Object.keys(expected)) {
+    assert.equal(
+      metadataPdf
+        .getForm()
+        .getField(key)
+        .acroField.dict.get(PDFName.of("V"))
+        ?.toString(),
+      savedForm.getField(key).acroField.dict.get(PDFName.of("V"))?.toString(),
+      key + " native value survives metadata editing",
+    );
+  }
+  await page.locator("#print").click();
+  await page.locator("#print-frame").waitFor({ state: "attached" });
+  const metadataPrint = await page.evaluate(async () =>
+    Array.from(
+      new Uint8Array(
+        await (
+          await fetch(document.querySelector("#print-frame").src)
+        ).arrayBuffer(),
+      ),
+    ),
+  );
+  assert.equal(
+    createHash("sha256").update(Buffer.from(metadataPrint)).digest("hex"),
+    createHash("sha256").update(metadataBytes).digest("hex"),
+  );
+  await page.locator("#pdf-file").setInputFiles(metadataPath);
+  await page.waitForFunction(
+    () =>
+      document.querySelector("#page").dataset.rendered === "0" &&
+      document.querySelector("#page").getAttribute("aria-busy") === "false",
+  );
+  await openProperties(page);
+  for (const [key, value] of Object.entries(properties))
+    assert.equal(await page.locator("#property-" + key).inputValue(), value);
+  await page.keyboard.press("Escape");
+  assert.equal(
+    await page
+      .locator("#more-actions")
+      .evaluate((el) => el === document.activeElement),
+    true,
+  );
+  await openProperties(page);
+  await page.locator("#clear-properties").click();
+  await page.locator('#properties-dialog button[type="submit"]').click();
+  await page.locator("#undo").click();
+  await openProperties(page);
+  assert.equal(
+    await page.locator("#property-title").inputValue(),
+    properties.title,
+  );
+  await page.locator("#cancel-properties").click();
+  await page.locator("#redo").click();
+  const clearDownload = page.waitForEvent("download");
+  await page.locator("#save").click();
+  const clearPath = output + "/properties-cleared.pdf";
+  await (await clearDownload).saveAs(clearPath);
+  const clearPdf = await PDFDocument.load(readFileSync(clearPath), {
+    updateMetadata: false,
+  });
+  assert.equal(
+    clearPdf.context.lookup(clearPdf.context.trailerInfo.Info).keys().length,
+    0,
+  );
+  assert(!clearPdf.catalog.has(PDFName.of("Metadata")));
+  assert.equal(
+    clearPdf.getForm().getTextField("full_name").getText(),
+    expected.full_name,
+  );
+  assert.equal(clearPdf.getPageCount(), 4);
+  assert.equal(
+    requests.filter(
+      (r) =>
+        /^https?:/.test(r.url) &&
+        (r.method !== "GET" || !r.url.startsWith(base)),
+    ).length,
+    0,
+  );
+  receipt.checks.document_properties_edit_clear_cancel_history_reopen_print =
+    "pass";
   // One phone-sized WebKit journey, using real touch events for pen and browser controls.
   const mobile = await webkit.launch({ headless: true });
   browsers.push(mobile);
@@ -639,6 +830,25 @@ try {
     "Phone Example",
   );
   receipt.checks.webkit_phone_touch_export = "pass";
+  await openProperties(phone);
+  const propertiesBox = await phone.locator("#properties-dialog").boundingBox();
+  assert(propertiesBox.width <= 390 && propertiesBox.height <= 844);
+  await phone.locator("#property-author").fill("Fictional Phone Editor");
+  await phone.screenshot({ path: output + "/properties-phone-light.png" });
+  await phone.locator('#properties-dialog button[type="submit"]').click();
+  const phonePropertiesDownload = phone.waitForEvent("download");
+  await phone.locator("#save").click();
+  const phonePropertiesPath = output + "/phone-properties.pdf";
+  await (await phonePropertiesDownload).saveAs(phonePropertiesPath);
+  assert.equal(
+    (
+      await PDFDocument.load(readFileSync(phonePropertiesPath), {
+        updateMetadata: false,
+      })
+    ).getAuthor(),
+    "Fictional Phone Editor",
+  );
+  receipt.checks.phone_properties_export = "pass";
   console.log(JSON.stringify(receipt, null, 2));
 } catch (error) {
   receipt.failure = error.stack;
