@@ -105,7 +105,12 @@ try {
     -12,
   );
   assert(Number(await img.getAttribute("x")) > x);
+  // Moving a zoomed image can put its corner beyond the viewport. A real
+  // resize must start on a visible grip, not at an off-screen CDP coordinate.
+  await p.locator("#additions .handle").scrollIntoViewIfNeeded();
   let handle = await p.locator("#additions .handle").boundingBox();
+  assert(handle.x >= 0 && handle.x + handle.width <= 390);
+  assert(handle.y >= 0 && handle.y + handle.height <= 844);
   const width = Number(await img.getAttribute("width"));
   await drag(handle.x + handle.width / 2, handle.y + handle.height / 2, 20, 5);
   assert(Number(await img.getAttribute("width")) > width);
