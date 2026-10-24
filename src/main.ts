@@ -41,6 +41,7 @@ function remember(snapshot = state) {
   if (history.length > 45) history.shift();
   future = [];
   dirty = true;
+  revokeOutput();
   updateHistory();
 }
 function updateHistory() {
@@ -320,6 +321,7 @@ function renderFields() {
         state.values[widget.fieldName] = (input as HTMLInputElement).checked;
       else state.values[widget.fieldName] = input.value;
       dirty = true;
+      revokeOutput();
       if (widget.radioButton || widget.checkBox)
         for (const peer of layer.querySelectorAll<HTMLInputElement>("input"))
           if (peer !== input && peer.dataset.field === widget.fieldName)
@@ -513,7 +515,11 @@ function place(point: Point) {
   );
   if (item.kind === "image" && signature) {
     item.image = signature.image;
-    item.w = Math.min(180, doc.viewports[pageIndex].width * 0.45);
+    item.w = Math.min(
+      180,
+      doc.viewports[pageIndex].width * 0.45,
+      doc.viewports[pageIndex].height * 0.3 * signature.ratio,
+    );
     item.h = item.w / signature.ratio;
   }
   if (item.kind === "text") item.text = "";
@@ -542,6 +548,7 @@ $<HTMLTextAreaElement>("text-content").oninput = () => {
     lines(item.text, item.w, item.size, doc.font).length * item.size * 1.25 + 4,
   );
   dirty = true;
+  revokeOutput();
   drawAdditions();
 };
 $<HTMLTextAreaElement>("text-content").onblur = () => {
@@ -720,7 +727,16 @@ $("page").onpointermove = (event) => {
     const viewport = doc.viewports[pageIndex];
     if (gesture.resize) {
       const ratio = original.w / original.h;
-      item.w = Math.max(12, Math.min(viewport.width - item.x, original.w + dx));
+      const maxWidth = Math.min(
+        viewport.width - item.x,
+        item.kind === "image" || item.kind === "tick"
+          ? (viewport.height - item.y) * ratio
+          : viewport.width,
+      );
+      item.w = Math.max(
+        Math.min(12, maxWidth),
+        Math.min(maxWidth, original.w + dx),
+      );
       item.h =
         item.kind === "image" || item.kind === "tick"
           ? item.w / ratio
@@ -882,6 +898,7 @@ function undo() {
   future.push(clone(state));
   state = previous;
   dirty = true;
+  revokeOutput();
   selected = "";
   renderFields();
   drawAdditions();
@@ -894,6 +911,7 @@ function redo() {
   history.push(clone(state));
   state = next;
   dirty = true;
+  revokeOutput();
   selected = "";
   renderFields();
   drawAdditions();
@@ -1001,8 +1019,16 @@ async function save(print = false) {
       : "Preparing your completed PDF…",
   );
   try {
-    const snapshot = clone(state),
-      bytes = await exportDocument(doc, snapshot);
+    const exportingDocument = doc,
+      snapshot = clone(state),
+      bytes = await exportDocument(exportingDocument, snapshot);
+    if (
+      doc !== exportingDocument ||
+      JSON.stringify(state) !== JSON.stringify(snapshot)
+    )
+      throw Error(
+        "Your edits changed while the PDF was being prepared. Save or print again to include the latest changes. Your edits are still here.",
+      );
     revokeOutput();
     outputUrl = URL.createObjectURL(
       new Blob([bytes as BlobPart], { type: "application/pdf" }),
@@ -1042,6 +1068,7 @@ async function save(print = false) {
       status("Completed PDF downloaded. You can keep editing here.");
     }
   } catch (e) {
+    revokeOutput();
     status(
       e instanceof Error
         ? e.message

@@ -68,6 +68,30 @@ export async function exportDocument(
   doc: OpenDocument,
   state: Snapshot,
 ): Promise<Uint8Array> {
+  for (const item of state.additions) {
+    if (item.kind === "ink") continue;
+    const viewport = doc.viewports[item.page];
+    const height =
+      item.kind === "text"
+        ? Math.max(
+            item.h,
+            lines(item.text || "", item.w, item.size, doc.font).length *
+              item.size *
+              1.25 +
+              4,
+          )
+        : item.h;
+    if (
+      !viewport ||
+      item.x < 0 ||
+      item.y < 0 ||
+      item.x + item.w > viewport.width + 0.1 ||
+      item.y + height > viewport.height + 0.1
+    )
+      throw Error(
+        `An addition on page ${item.page + 1} extends outside the page. Move it or reduce its size before saving. Your edits are still here.`,
+      );
+  }
   const pdf = await PDFDocument.load(doc.bytes, { updateMetadata: false });
   pdf.registerFontkit(fontkit);
   const font = await pdf.embedFont(doc.fontBytes, { subset: true });
