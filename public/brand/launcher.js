@@ -63,8 +63,8 @@
         { name: "Link Check", href: "https://share.loftwah.com/", image: "apps/linkcheck-small-20261018.webp", description: "Website and sharing checks", keywords: "inspect website seo metadata social preview report icons" },
         { name: "Hello World", href: "https://ready.loftwah.com/", image: "apps/hello-small-20261018.webp", description: "Your first deployment", keywords: "hello deploy deployment reference first app" },
         { name: "Carry / forward", href: "https://ai.loftwah.com/", image: "apps/carryforward-small-20261018.webp", description: "Portable assistant memory", keywords: "carry forward ai fictional memory encrypted vault" },
-        { name: "Launch Kit", href: "https://composer-launch-kit.loftwah.workers.dev/", image: "apps/launch-kit-20261023-32.png", standaloneOnly: true, description: "Profile cards, icons and launch assets", keywords: "profile card branding icon social image png artwork design" },
-        { name: "Paperwork", href: "https://composer-paperwork.loftwah.workers.dev/", image: "apps/paperwork-icon-20261024.svg", standaloneOnly: true, description: "Fill, draw, sign and print a PDF locally", keywords: "pdf form paperwork document signature ink pen fill print" },
+        { name: "Launch Kit", href: "https://composer-launch-kit.loftwah.workers.dev/", image: "apps/launch-kit-20261023-32.png", standaloneOnly: true, explainer: "/launch-kit", description: "Profile cards, icons and launch assets", keywords: "profile card branding icon social image png artwork design" },
+        { name: "Paperwork", href: "https://composer-paperwork.loftwah.workers.dev/", image: "apps/paperwork-icon-20261024.svg", standaloneOnly: true, explainer: "/paperwork", description: "Fill, draw, sign and print a PDF locally", keywords: "pdf form paperwork document signature ink pen fill print" },
     ];
     const taskIcons = {
         terminal: ["M4 5h16v14H4z", "M8 9l3 3-3 3M13 15h3"],
@@ -162,7 +162,7 @@
             entry.dataset.keywords = app.keywords;
             // Guestbook/Linkarooie retain their authored mounted destinations. The
             // two standalone editors open their applications, not Composer explainers.
-            if (app.standaloneOnly)
+            if (app.standaloneOnly && link.origin === composerHome.origin && link.pathname.replace(/\/$/, "") === app.explainer)
                 link.href = app.href;
             let image = link.querySelector("img");
             if (!image) {
