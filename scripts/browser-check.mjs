@@ -325,6 +325,28 @@ try {
     receipt.downloaded_pdf_sha256,
   );
   receipt.checks.print_uses_completed_pdf = "pass";
+  await page.locator('[data-field="case_note"]').fill("A later correction");
+  assert.equal(await page.locator("#print-fallback").count(), 0);
+  await page.locator('[data-field="case_note"]').fill(expected.case_note);
+  receipt.checks.stale_print_copy_removed_after_edit = "pass";
+  // Mutate a real field during the asynchronous export, before it can publish a blob.
+  await page.evaluate(() => {
+    document.querySelector("#print").click();
+    const field = document.querySelector('[data-field="case_note"]');
+    field.value = "An edit made while preparing the PDF";
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await page.waitForFunction(() =>
+    document.querySelector("#status").textContent.includes("edits changed"),
+  );
+  assert.equal(await page.locator("#print-fallback").count(), 0);
+  assert.equal(await page.locator("#print-frame").count(), 0);
+  assert.equal(
+    await page.locator('[data-field="case_note"]').inputValue(),
+    "An edit made while preparing the PDF",
+  );
+  await page.locator('[data-field="case_note"]').fill(expected.case_note);
+  receipt.checks.edits_during_export_cannot_publish_stale_pdf = "pass";
   // Reopen the downloaded file through the same public UI and verify actual native values.
   await page.locator("#pdf-file").setInputFiles(completed);
   await ready(0);

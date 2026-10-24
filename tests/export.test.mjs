@@ -327,3 +327,20 @@ test("a translucent highlight is one continuous PDF stroke so segment joins do n
     await doc.pdf.loadingTask.destroy();
   }
 });
+
+test("export refuses additions that would be clipped instead of silently losing part of an edit", async () => {
+  const doc = await fixture("public/examples/garden-form.pdf");
+  try {
+    for (const item of [
+      { ...additions()[3], y: 820 },
+      { ...additions()[1], y: 820, text: "A note that must remain visible." },
+    ]) {
+      const state = { values: doc.initial.values, additions: [item] },
+        before = structuredClone(state);
+      await assert.rejects(exportDocument(doc, state), /outside|fit/);
+      assert.deepEqual(state, before);
+    }
+  } finally {
+    await doc.pdf.loadingTask.destroy();
+  }
+});
