@@ -282,12 +282,7 @@ body:not(.has-document) .header-actions :is(#open, #save, #print) {
   font-size: 13px;
 }
 footer {
-  border-top: 1px solid #d6d9df;
-  margin-top: 36px;
-  padding-top: 16px;
-  color: #647078;
-}
-footer {
+  border-top: 1px solid var(--line);
   min-height: 48px;
   display: flex;
   flex-wrap: wrap;
@@ -323,9 +318,10 @@ body.has-document {
 }
 .toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  padding: 10px 24px;
+  justify-content: flex-start;
+  padding: 4px 12px;
   background: var(--surface);
   border-bottom: 1px solid var(--line);
   gap: 12px;
@@ -352,22 +348,23 @@ body.has-document {
   background: var(--paper);
 }
 .history {
+  margin-left: auto;
   border-left: 1px solid var(--line);
   padding-left: 12px;
 }
 .context-bar {
-  min-height: 48px;
-  display: flex;
-  gap: 16px;
-  align-items: center;
-  justify-content: space-between;
-  padding: 4px 28px;
-  border-bottom: 1px solid var(--line);
   font-size: 12px;
 }
-.context-bar p {
-  margin: 0;
-  color: var(--muted);
+.context-bar:not(:has(.context-options > :not([hidden]))) {
+  display: none;
+}
+#tool-hint {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 .context-options {
   display: flex;
@@ -402,7 +399,7 @@ input {
   flex: 1;
   overflow: auto;
   background: var(--paper);
-  padding: 28px;
+  padding: 16px;
   overscroll-behavior: contain;
   position: relative;
   min-height: 0;
@@ -621,7 +618,7 @@ body.dragging:after {
 }
 @media (max-width: 1000px) {
   .toolbar {
-    padding: 8px 12px;
+    padding: 4px 8px;
   }
   .tools button {
     padding: 8px;
@@ -636,9 +633,6 @@ body.dragging:after {
   .welcome {
     gap: 32px;
     padding-inline: 28px;
-  }
-  .context-bar {
-    padding-inline: 16px;
   }
 }
 @media (max-width: 700px) {
@@ -704,8 +698,8 @@ body.dragging:after {
   }
   .toolbar {
     flex-wrap: wrap;
-    gap: 6px;
-    padding: 6px 8px;
+    gap: 2px;
+    padding: 2px 6px;
   }
   .tools {
     display: grid;
@@ -715,9 +709,9 @@ body.dragging:after {
   }
   .tools button {
     flex-direction: column;
-    gap: 3px;
-    padding: 5px 1px;
-    min-height: 52px;
+    gap: 1px;
+    padding: 3px 1px;
+    min-height: 44px;
     border-radius: 4px;
   }
   .tools button span {
@@ -729,19 +723,11 @@ body.dragging:after {
     height: 20px;
   }
   .history {
-    padding: 0;
-    border: 0;
-    position: absolute;
-    bottom: 0;
-    visibility: hidden;
+    display: none;
   }
   .context-bar {
-    flex-direction: column;
-    gap: 4px;
-    align-items: stretch;
-    padding: 4px 10px;
+    padding: 2px 4px;
     font-size: 11px;
-    min-height: 60px;
   }
   .context-options {
     gap: 8px;
@@ -760,7 +746,7 @@ body.dragging:after {
     max-width: 88px;
   }
   .workspace {
-    padding: 14px 10px;
+    padding: 10px 8px;
   }
   .page-bar {
     padding: 4px;
@@ -944,5 +930,145 @@ kbd {
   }
   .welcome {
     gap: 28px;
+  }
+}
+
+/* Editing keeps the page tall; help and secondary actions stay in More. */
+body:not(.has-document) :is(#more-actions, .mobile-history) {
+  display: none;
+}
+.has-document .app-header {
+  min-height: 56px;
+  padding: 6px 16px;
+  gap: 16px;
+}
+.has-document > footer {
+  display: none;
+}
+.has-document .status:not(.error) {
+  position: fixed;
+  bottom: 60px;
+  left: 16px;
+  z-index: 10;
+  max-width: min(620px, calc(100vw - 32px));
+  min-height: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  pointer-events: none;
+}
+.has-document .status[data-visible="false"]:not(.error) {
+  opacity: 0;
+}
+.menu-control-label {
+  display: none;
+}
+.document-menu {
+  position: fixed;
+  inset: 60px 12px auto auto;
+  margin: 0;
+  width: 250px;
+  max-height: calc(100dvh - 110px);
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+}
+.document-menu button,
+.document-menu a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  font-size: 14px;
+  text-align: left;
+  border-color: transparent;
+  background: transparent;
+}
+.document-menu button:hover,
+.document-menu a:hover {
+  background: var(--paper);
+}
+.document-menu .icon-button {
+  justify-content: flex-start;
+}
+.document-menu .menu-control-label {
+  display: inline;
+}
+.document-menu .compact-actions:not(:empty) {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 4px;
+  margin-bottom: 4px;
+}
+@media (max-width: 700px) {
+  .has-document .app-header {
+    padding: 4px 10px;
+    gap: 2px 10px;
+  }
+  .has-document .wordmark {
+    min-height: 44px;
+  }
+  .has-document .header-actions {
+    gap: 4px;
+    justify-content: flex-start;
+  }
+  .mobile-history {
+    margin-left: auto;
+  }
+  .has-document .status:not(.error) {
+    left: 10px;
+    max-width: calc(100vw - 20px);
+    font-size: 11px;
+  }
+  .document-menu {
+    top: 100px;
+    max-height: calc(100dvh - 116px);
+  }
+  .text-options {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 64px auto;
+    align-items: end;
+    padding: 4px 10px;
+  }
+  .text-options label {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    font-size: 11px;
+  }
+  .text-options label:first-child {
+    flex-basis: auto;
+    min-width: 0;
+  }
+  .text-options textarea {
+    min-height: 44px;
+    padding: 5px;
+  }
+  .text-options input {
+    width: 64px;
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 700px) {
+  .page-bar button {
+    min-width: 44px;
+  }
+  .page-bar .icon-button {
+    width: 44px;
+  }
+}
+@media (max-width: 360px) {
+  .page-controls > span {
+    display: none;
+  }
+  .page-controls select {
+    width: 44px;
   }
 }
