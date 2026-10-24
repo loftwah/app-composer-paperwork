@@ -58,11 +58,13 @@
         closeButton.title = "Close menu (Esc)";
     }
     const apps = [
-        { name: "Linkarooie", description: "Links and collections", keywords: "profile curate collection favourites favorites showcase links" },
-        { name: "Here / there", description: "Photos and postcards", keywords: "photo photos guestbook contribute postcard approve moderation gallery" },
-        { name: "Link Check", description: "Website and sharing checks", keywords: "inspect website seo metadata social preview report icons" },
-        { name: "Hello World", description: "Your first deployment", keywords: "hello deploy deployment reference first app" },
-        { name: "Carry / forward", description: "Portable assistant memory", keywords: "carry forward ai fictional memory encrypted vault" },
+        { name: "Linkarooie", href: "https://showcase.loftwah.com/", image: "apps/linkarooie-small-20261018.webp", description: "Links and collections", keywords: "profile curate collection favourites favorites showcase links" },
+        { name: "Here / there", href: "https://guestbook.loftwah.com/", image: "apps/herethere-small-20261018.webp", description: "Photos and postcards", keywords: "photo photos guestbook contribute postcard approve moderation gallery" },
+        { name: "Link Check", href: "https://share.loftwah.com/", image: "apps/linkcheck-small-20261018.webp", description: "Website and sharing checks", keywords: "inspect website seo metadata social preview report icons" },
+        { name: "Hello World", href: "https://ready.loftwah.com/", image: "apps/hello-small-20261018.webp", description: "Your first deployment", keywords: "hello deploy deployment reference first app" },
+        { name: "Carry / forward", href: "https://ai.loftwah.com/", image: "apps/carryforward-small-20261018.webp", description: "Portable assistant memory", keywords: "carry forward ai fictional memory encrypted vault" },
+        { name: "Launch Kit", href: "https://composer-launch-kit.loftwah.workers.dev/", image: "apps/launch-kit-20261023-32.png", standaloneOnly: true, description: "Profile cards, icons and launch assets", keywords: "profile card branding icon social image png artwork design" },
+        { name: "Paperwork", href: "https://composer-paperwork.loftwah.workers.dev/", image: "apps/paperwork-icon-20261024.svg", standaloneOnly: true, description: "Fill, draw, sign and print a PDF locally", keywords: "pdf form paperwork document signature ink pen fill print" },
     ];
     const taskIcons = {
         terminal: ["M4 5h16v14H4z", "M8 9l3 3-3 3M13 15h3"],
@@ -76,8 +78,6 @@
     // normally and retain the destination's own authentication boundary.
     const tasks = [
         { name: "Explore App Composer", path: "/discover", description: "Working tools and recent releases", keywords: "new latest shipped features work discover", icon: "stacks" },
-        { name: "Paperwork", path: "/paperwork", description: "Fill, draw, sign and print a PDF locally", keywords: "pdf form paperwork document signature ink pen fill print", icon: "review" },
-        { name: "Launch Kit", path: "/launch-kit", description: "Make profile cards, icons and launch assets", keywords: "profile card branding icon social image png artwork design", icon: "settings" },
         { name: "My profile / My apps", path: "/me", description: "Open your invited profile and app tools", keywords: "member account login sign in profile publish", icon: "settings" },
         { name: "Team application films", path: "/platform/demo", description: "Watch the overview and technical walkthrough", keywords: "video demo movie team platform request", icon: "book" },
         { name: "Platform Teams", path: "/platform", description: "Understand team application requests and policies", keywords: "enterprise team permissions request policy", icon: "stacks" },
@@ -98,11 +98,35 @@
         { name: "Analytics & reports", path: "/activity", description: "Inspect recorded actions and share a finding", keywords: "analytics counts visits report story share", icon: "chart" },
         { name: "Documentation", path: "/docs", description: "Read the product and source guides", keywords: "docs help reference", icon: "book" },
     ];
+    const retainedApps = new Set();
     for (const entry of dialog.querySelectorAll("[data-destination]")) {
         const link = entry.querySelector("a");
         const name = (link?.querySelector("span:not(.task-icon)")?.firstChild?.textContent ?? link?.firstChild?.textContent ?? "").trim();
-        if (name !== "App Composer" && !apps.some(app => app.name === name))
+        if (name === "App Composer")
+            continue;
+        if (!apps.some(app => app.name === name) || retainedApps.has(name))
             entry.remove();
+        else
+            retainedApps.add(name);
+    }
+    // Older shells only author the original five apps. Complete the app section
+    // here so each local controller exposes the entire current catalogue once.
+    for (const app of apps) {
+        const exists = [...dialog.querySelectorAll("[data-destination]")].some(entry => {
+            const link = entry.querySelector("a");
+            return (link?.querySelector("span:not(.task-icon)")?.firstChild?.textContent ?? link?.firstChild?.textContent ?? "").trim() === app.name;
+        });
+        if (exists)
+            continue;
+        const entry = document.createElement("li");
+        entry.setAttribute("data-destination", "");
+        const link = document.createElement("a");
+        link.href = app.href;
+        const copy = document.createElement("span");
+        copy.append(document.createTextNode(app.name), document.createElement("small"));
+        link.append(copy);
+        entry.append(link);
+        list?.append(entry);
     }
     for (const task of tasks) {
         const entry = document.createElement("li");
@@ -136,6 +160,18 @@
         entry.dataset.launcherGroup = app ? "apps" : "studio";
         if (app) {
             entry.dataset.keywords = app.keywords;
+            // Guestbook/Linkarooie retain their authored mounted destinations. The
+            // two standalone editors open their applications, not Composer explainers.
+            if (app.standaloneOnly)
+                link.href = app.href;
+            let image = link.querySelector("img");
+            if (!image) {
+                image = document.createElement("img");
+                image.src = new URL(app.image, assetBase).href;
+                image.width = image.height = 40;
+                image.alt = "";
+                link.prepend(image);
+            }
             const small = link.querySelector("small");
             if (small)
                 small.textContent = app.description;
