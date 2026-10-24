@@ -1,0 +1,13 @@
+{
+  "author": "share-20261024.svg",
+  "renderer": "@resvg/resvg-wasm 2.6.2; HarfBuzz 14.6.0 static 400/700 instances",
+  "font": "../public/fonts/SpaceGrotesk.ttf",
+  "fontSha256": "acad6de1fc93436f5c0f1f4137751ef04f1aea3063e7036535970ffcfbd79f72",
+  "image": "press-20261024.png",
+  "imageSha256": "4ed33aae854f36d20ee16725ea686910fe468d44658788e72f38ac3b71696e39",
+  "output": "../public/social/paperwork-20261024.png",
+  "width": 1200,
+  "height": 630,
+  "outputSha256": "e8ea6dd7b4c0c6f6d99265cbf0de1ec243718459f279ce82b6d0d957de5628e4",
+  "note": "Code-authored social layout reuses the original Paperwork mark, typeface and existing print-shop artwork. No generated screenshot or new identity."
+}

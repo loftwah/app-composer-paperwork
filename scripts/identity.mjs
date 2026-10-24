@@ -1,3 +1,4 @@
+import { writeSiteMetadata } from "./seo.mjs";
 import { execFileSync } from "node:child_process";
 import { writeFileSync, cpSync } from "node:fs";
 let sha = "uncommitted";
@@ -30,3 +31,5 @@ cpSync("node_modules/pdfjs-dist/wasm", "dist/pdf-assets/wasm", {
 });
 
 cpSync("app.manifest.json", "dist/app.manifest.json");
+
+writeSiteMetadata();
