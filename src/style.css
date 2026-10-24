@@ -770,3 +770,8 @@ body.dragging:after {
     scroll-behavior: auto !important;
   }
 }
+/* SVG groups do not establish a touch-action box in Chromium. The SVG root
+   owns object gestures; blank-page hits still reach the scrollable canvas. */
+.page[data-tool="select"] .additions {
+  touch-action: none;
+}

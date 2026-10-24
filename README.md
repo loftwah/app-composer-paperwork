@@ -47,3 +47,5 @@ Verifier dependencies: pypdf, PyMuPDF, Pillow and NumPy. Browser checks use the 
 The supplied verifier's ROI differences establish changed pixels, not exact object fidelity. Pair it with PDF.js and independent MuPDF/Poppler renders and inspect rotation, transparency and source preservation. Physical-device, OS print-dialog and unfamiliar-human acceptance remain separate from automation.
 
 [Contributing](CONTRIBUTING.md) · [Accessibility](ACCESSIBILITY.md) · [Security](SECURITY.md) · [MIT licence](LICENSE)
+
+Continuous mobile input regression (native Chromium touch events, including two-finger zoom and PNG move/resize): `PAPERWORK_ORIGIN=https://composer-paperwork.loftwah.workers.dev node scripts/touch-check.mjs`. Without an origin override, start the built preview on 127.0.0.1:4264 first. This tests the browser input pipeline; it does not establish physical iPhone or stylus acceptance.
