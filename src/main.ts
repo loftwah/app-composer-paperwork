@@ -282,9 +282,9 @@ function renderFields() {
       h = turned ? width : height;
     const transforms: Record<number, string> = {
       0: "",
-      90: `translate(${height}px,0) rotate(90deg)`,
+      90: `translate(${width}px,0) rotate(90deg)`,
       180: `translate(${width}px,${height}px) rotate(180deg)`,
-      270: `translate(0,${width}px) rotate(270deg)`,
+      270: `translate(0,${height}px) rotate(270deg)`,
     };
     Object.assign(input.style, {
       left: `${left * zoom}px`,
