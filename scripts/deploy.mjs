@@ -19,7 +19,10 @@ function guard() {
     cfg.name !== "composer-paperwork" ||
     cfg.account_id !== "1003dc1d93af0ebea56b2f1252f89627" ||
     cfg.main ||
-    cfg.routes ||
+    JSON.stringify(cfg.routes) !==
+      JSON.stringify([
+        { pattern: "paperwork.loftwah.com", custom_domain: true },
+      ]) ||
     Object.keys(cfg).some((key) =>
       /databases|buckets|queues|triggers|services|kv_namespaces/.test(key),
     ) ||
@@ -43,7 +46,9 @@ const urls = output.match(
   /https:\/\/composer-paperwork\.[a-z0-9-]+\.workers\.dev/g,
 );
 if (!urls?.length) throw Error("No verified static deployment URL returned.");
-const origin = urls[0];
+if (!output.includes("paperwork.loftwah.com"))
+  throw Error("The reviewed custom domain was not deployed.");
+const origin = "https://paperwork.loftwah.com";
 const paths = [
   "/brand/launcher.js",
   "/brand/launcher.css",
@@ -55,6 +60,7 @@ const paths = [
   "/build.json",
   "/",
   "/help.html",
+  "/canonical.js",
   "/artwork/press-20261024.webp",
   "/paperwork.json",
   "/app.manifest.json",
