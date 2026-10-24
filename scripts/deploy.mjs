@@ -45,6 +45,13 @@ const urls = output.match(
 if (!urls?.length) throw Error("No verified static deployment URL returned.");
 const origin = urls[0];
 const paths = [
+  "/brand/launcher.js",
+  "/brand/launcher.css",
+  "/brand/space-latin-20261018.woff2",
+  "/brand/composer-icon-20261022b-96.png",
+  ...["linkarooie", "herethere", "linkcheck", "hello", "carryforward"].map(
+    (name) => `/brand/apps/${name}-small-20261018.webp`,
+  ),
   "/build.json",
   "/",
   "/help.html",
