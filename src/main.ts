@@ -1071,6 +1071,11 @@ window.onbeforeunload = (event) => {
   }
 };
 window.addEventListener("keydown", (event) => {
+  if (
+    document.querySelector<HTMLDialogElement>("#app-navigation")?.open ||
+    (event.target instanceof Element && event.target.closest("#app-navigation"))
+  )
+    return;
   const target = event.target as HTMLElement,
     editing = /INPUT|TEXTAREA|SELECT/.test(target.tagName);
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {

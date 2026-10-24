@@ -12,6 +12,8 @@
     />
     <meta name="theme-color" content="#18191c" />
     <title>Paperwork — Fill, draw, sign, done.</title>
+    <link rel="stylesheet" href="/brand/launcher.css" />
+    <script src="/brand/launcher.js" defer></script>
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
   </head>
   <body>
@@ -23,10 +25,19 @@
       ><span id="filename" class="filename"
         >One document. One editor. One finished PDF.</span
       >
-      <div class="header-actions">
+      <div class="header-actions app-tools">
         <button id="open" title="Open a PDF">Open PDF</button
         ><button id="save" class="primary" disabled>Save PDF</button
         ><button id="print" disabled>Print</button
+        ><button
+          type="button"
+          class="secondary"
+          data-open-apps
+          aria-label="Open apps"
+          aria-haspopup="dialog"
+          title="Apps and shortcuts (Ctrl/Cmd+K)"
+        >
+          Apps <kbd>⌘ K</kbd></button
         ><button
           id="theme"
           class="icon-button"
@@ -278,5 +289,66 @@
       </div>
     </dialog>
     <script type="module" src="/src/main.ts"></script>
+    <dialog
+      id="app-navigation"
+      aria-labelledby="app-navigation-title"
+      data-composer-home="https://composer.loftwah.com/"
+    >
+      <div class="dialog-heading">
+        <h2 id="app-navigation-title">Apps and shortcuts</h2>
+        <button type="button" data-close-apps autofocus>Close</button>
+      </div>
+      <label
+        >Find an app or task<input type="search" autocomplete="off"
+      /></label>
+      <p role="status" aria-live="polite"></p>
+      <ul>
+        <li data-destination>
+          <a href="https://showcase.loftwah.com/"
+            ><img
+              src="/brand/apps/linkarooie-small-20261018.webp"
+              width="40"
+              height="40"
+              alt="" /><span>Linkarooie<small></small></span
+          ></a>
+        </li>
+        <li data-destination>
+          <a href="https://guestbook.loftwah.com/"
+            ><img
+              src="/brand/apps/herethere-small-20261018.webp"
+              width="40"
+              height="40"
+              alt="" /><span>Here / there<small></small></span
+          ></a>
+        </li>
+        <li data-destination>
+          <a href="https://share.loftwah.com/"
+            ><img
+              src="/brand/apps/linkcheck-small-20261018.webp"
+              width="40"
+              height="40"
+              alt="" /><span>Link Check<small></small></span
+          ></a>
+        </li>
+        <li data-destination>
+          <a href="https://ready.loftwah.com/"
+            ><img
+              src="/brand/apps/hello-small-20261018.webp"
+              width="40"
+              height="40"
+              alt="" /><span>Hello World<small></small></span
+          ></a>
+        </li>
+        <li data-destination>
+          <a href="https://ai.loftwah.com/"
+            ><img
+              src="/brand/apps/carryforward-small-20261018.webp"
+              width="40"
+              height="40"
+              alt="" /><span>Carry / forward<small></small></span
+          ></a>
+        </li>
+      </ul>
+    </dialog>
   </body>
 </html>
