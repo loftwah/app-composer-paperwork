@@ -2,6 +2,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { verifyStaticAssets } from "./verify-static-assets.mjs";
+import { verifySeo } from "./verify-seo.mjs";
 const run = (command, args, options = {}) =>
   execFileSync(command, args, { encoding: "utf8", ...options });
 const git = (args) => run("git", args).trim(),
@@ -62,6 +63,10 @@ const paths = [
   "/help.html",
   "/canonical.js",
   "/artwork/press-20261024.webp",
+  "/social/paperwork-20261024.png",
+  "/icons/paperwork-48-20261024.png",
+  "/icons/paperwork-180-20261024.png",
+  "/sitemap.xml",
   "/paperwork.json",
   "/app.manifest.json",
   "/examples/garden-form.pdf",
@@ -83,5 +88,14 @@ console.log(
     processing: "browser-local",
     verifiedAssets: verified,
     verified: new Date().toISOString(),
+  }),
+);
+
+console.log(
+  JSON.stringify({
+    seo: await verifySeo({
+      origin,
+      imageBytes: readFileSync("dist/social/paperwork-20261024.png"),
+    }),
   }),
 );

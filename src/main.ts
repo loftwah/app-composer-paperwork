@@ -1252,7 +1252,7 @@ async function boot() {
     $("app-title").textContent = config.title;
     mark.title = config.title;
     mark.setAttribute("aria-label", `${config.title} home`);
-    document.title = config.title + " — Fill, draw, sign, done.";
+    document.title = config.title + " — Fill, sign and edit PDFs in your browser";
     document.querySelector(".start > p")!.textContent = config.intro;
     document.documentElement.dataset.theme =
       config.theme === "daylight" ? "light" : "dark";

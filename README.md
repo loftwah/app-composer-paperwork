@@ -55,3 +55,9 @@ Continuous mobile input regression (native Chromium touch events, including two-
 Native-widget rotation regression: `PAPERWORK_ORIGIN=https://paperwork.loftwah.com node scripts/rotated-fields-check.mjs`. It derives 90°/270° variants from the unchanged owner corpus in an owned temporary root, checks every native widget's actual browser bounds against the PDF viewport, and inspects downloaded field values. The temporary source variants are removed on success and failure.
 
 Print-shop artwork: the original master, generation prompt and export provenance are in [artwork/](artwork/). The original Paperwork document icon and other apps’ identities are retained.
+
+## Search and sharing
+
+The committed `site.json` owns the reference public origin. The build emits static canonical, Open Graph/X tags, a truthful application schema, robots.txt and a two-page sitemap. Sample/query URLs canonicalise to the clean home page. Fictional example downloads have an HTTP noindex directive. The public 1200×630 PNG card reuses the print-shop artwork; its editable SVG and exact input/export provenance are in `artwork/`.
+
+A reproduced instance removes the reference `site.json` and builds as noindex until its owner declares a clean HTTPS origin there. Set that origin only after reviewing the instance's deployment target. The release guard fetches the actual metadata and PNG with Googlebot, Twitterbot, Facebook and LinkedIn user agents, checks the PNG bytes/dimensions/type and rejects missing/generic cards, canonical drift or blocked public pages. These HTTP checks do not establish a provider's cached preview, Google indexing or search ranking.
