@@ -18,6 +18,7 @@ import {
   type DocumentMetadata,
   type MetadataEdit,
 } from "./metadata.ts";
+import { hasXfaForm } from "./xfa.ts";
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 export const LIMITS = {
@@ -104,11 +105,12 @@ export async function openDocument(
       "This PDF is damaged or password-protected. Open an unprotected copy; your current work is still here.",
     );
   }
-  const form = parsed.getForm();
-  if (form.hasXFA())
+  // Checked before getForm(): pdf-lib deletes XFA data there without failing.
+  if (hasXfaForm(parsed))
     throw Error(
       "This PDF uses XFA forms, which Paperwork cannot safely save. Use a standard PDF copy from its publisher. Your current work is still here.",
     );
+  const form = parsed.getForm();
   if (
     form
       .getFields()
