@@ -43,3 +43,34 @@ test("public, local and reproduced instances never navigate to the reference dom
     });
   }
 });
+
+test("domain verification requires unchanged HTML with transformation protection", async () => {
+  const { verifyStaticAssets } =
+    await import("../scripts/verify-static-assets.mjs");
+  const bytes = Buffer.from("<!doctype html><title>Paperwork</title>");
+  const check = (body, cache) =>
+    verifyStaticAssets({
+      origin: "https://paperwork.loftwah.com",
+      attempts: 1,
+      assets: [{ path: "/", bytes, csp: true }],
+      fetchImpl: async () =>
+        new Response(body, {
+          headers: {
+            "Content-Security-Policy": "connect-src 'self'",
+            "Cache-Control": cache,
+          },
+        }),
+    });
+  await check(bytes, "public, max-age=0, no-transform");
+  await assert.rejects(
+    check(bytes, "public, max-age=0"),
+    /transformation protection missing/,
+  );
+  await assert.rejects(
+    check(
+      Buffer.concat([bytes, Buffer.from("<script>injected</script>")]),
+      "no-transform",
+    ),
+    /SHA-256 differs/,
+  );
+});
