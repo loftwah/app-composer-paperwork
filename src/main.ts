@@ -1121,9 +1121,7 @@ async function save(print = false) {
       a.click();
       lastSaved = JSON.stringify(snapshot);
       dirty = JSON.stringify(state) !== lastSaved;
-      status(
-        "PDF downloaded. A small victory over paperwork. You can keep editing here.",
-      );
+      status("PDF downloaded. You can keep editing here.");
     }
   } catch (e) {
     revokeOutput();

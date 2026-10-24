@@ -36,6 +36,14 @@
 }
 body {
   margin: 0;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+}
+body > main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
 }
 button,
 input,
@@ -208,7 +216,9 @@ body:not(.has-document) .header-actions :is(#open, #save, #print) {
 .welcome {
   max-width: 1260px;
   margin: auto;
-  min-height: calc(100svh - 180px);
+  min-height: 0;
+  flex: 1;
+  width: 100%;
   display: grid;
   grid-template-columns: 1.15fr 1fr;
   align-items: center;
@@ -294,6 +304,7 @@ footer a {
 }
 body.has-document {
   height: 100dvh;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
