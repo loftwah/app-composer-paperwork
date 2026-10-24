@@ -109,6 +109,10 @@ try {
   // resize must start on a visible grip, not at an off-screen CDP coordinate.
   await p.locator("#additions .handle").scrollIntoViewIfNeeded();
   let handle = await p.locator("#additions .handle").boundingBox();
+  await p.locator("#workspace").evaluate((el, rect) => {
+    el.scrollLeft += Math.max(0, rect.x + rect.width - innerWidth + 24);
+  }, handle);
+  handle = await p.locator("#additions .handle").boundingBox();
   assert(handle.x >= 0 && handle.x + handle.width <= 390);
   assert(handle.y >= 0 && handle.y + handle.height <= 844);
   const width = Number(await img.getAttribute("width"));
