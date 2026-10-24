@@ -186,6 +186,14 @@ function showPropertyDetails() {
       ? "Embedded XMP packet present. Applying changes removes it."
       : "No embedded XMP packet in the next export.";
 }
+function sizePropertyInput(input: HTMLTextAreaElement) {
+  input.style.height = "auto";
+  input.style.height = `${Math.min(132, Math.max(44, input.scrollHeight + 2))}px`;
+}
+for (const key of Object.keys(PROPERTY_KEYS)) {
+  const input = $<HTMLTextAreaElement>(`property-${key}`);
+  input.addEventListener("input", () => sizePropertyInput(input));
+}
 button("properties").onclick = () => {
   if (!doc || busy) return;
   settleField();
@@ -200,6 +208,8 @@ button("properties").onclick = () => {
   showPropertyDetails();
   propertiesDocument = doc;
   propertiesDialog.showModal();
+  for (const key of Object.keys(PROPERTY_KEYS))
+    sizePropertyInput($<HTMLTextAreaElement>(`property-${key}`));
 };
 button("clear-properties").onclick = () => {
   for (const key of Object.keys(PROPERTY_KEYS))
@@ -207,7 +217,9 @@ button("clear-properties").onclick = () => {
   clearOtherProperties = true;
   showPropertyDetails();
   $("properties-feedback").textContent =
-    "Properties will be cleared when you apply. Cancel keeps them.";
+    "Creator, producer, dates and custom properties will also be cleared. Apply to confirm; Cancel keeps them. Page content and attachments stay unchanged.";
+  for (const key of Object.keys(PROPERTY_KEYS))
+    sizePropertyInput($<HTMLTextAreaElement>(`property-${key}`));
 };
 button("cancel-properties").onclick = () => propertiesDialog.close();
 propertiesDialog.addEventListener("close", () => {

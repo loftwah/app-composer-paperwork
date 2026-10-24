@@ -720,6 +720,8 @@ try {
   );
   receipt.checks.document_properties_edit_clear_cancel_history_reopen_print =
     "pass";
+  assert.deepEqual(errors, []);
+  writeFileSync(output + "/network.json", JSON.stringify(requests, null, 2));
   // One phone-sized WebKit journey, using real touch events for pen and browser controls.
   const mobile = await webkit.launch({ headless: true });
   browsers.push(mobile);
@@ -830,9 +832,18 @@ try {
     "Phone Example",
   );
   receipt.checks.webkit_phone_touch_export = "pass";
+  await phone.locator("#more-actions").click();
+  if ((await phone.locator("#theme").getAttribute("aria-pressed")) === "true")
+    await phone.locator("#theme").click();
+  else await phone.keyboard.press("Escape");
   await openProperties(phone);
   const propertiesBox = await phone.locator("#properties-dialog").boundingBox();
   assert(propertiesBox.width <= 390 && propertiesBox.height <= 844);
+  assert(
+    await phone
+      .locator("#property-title")
+      .evaluate((el) => el.scrollHeight <= el.clientHeight + 1),
+  );
   await phone.locator("#property-author").fill("Fictional Phone Editor");
   await phone.screenshot({ path: output + "/properties-phone-light.png" });
   await phone.locator('#properties-dialog button[type="submit"]').click();
