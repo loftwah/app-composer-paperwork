@@ -8,6 +8,8 @@ import {
   PDFName,
   PDFDict,
   PDFArray,
+  PDFString,
+  PDFHexString,
   setLineJoin,
   rgb,
   pushGraphicsState,
@@ -102,6 +104,21 @@ export async function exportDocument(
       value = state.values[key];
     if (JSON.stringify(value) === JSON.stringify(doc.initial.values[key]))
       continue;
+    // pdf-lib reads literal /DA strings without decoding PDF octal escapes.
+    // Preserve the decoded bytes as hex so its appearance provider retains the
+    // source font size and colour instead of silently auto-sizing the text.
+    for (const target of [field.acroField, ...field.acroField.getWidgets()]) {
+      const appearance = target.DA();
+      if (appearance instanceof PDFString)
+        target.dict.set(
+          PDFName.of("DA"),
+          PDFHexString.of(
+            Array.from(appearance.asBytes(), (byte) =>
+              byte.toString(16).padStart(2, "0"),
+            ).join(""),
+          ),
+        );
+    }
     if (field instanceof PDFTextField) {
       safeText(String(value ?? ""), font);
       field.setText(String(value ?? ""));

@@ -303,6 +303,16 @@ try {
   const completed = output + "/paperwork-lab-interactive-mixed-completed.pdf";
   await download.saveAs(completed);
   const completedBytes = readFileSync(completed);
+  const savedForm = (await PDFDocument.load(completedBytes)).getForm();
+  assert.match(
+    savedForm.getTextField("comments").acroField.getDefaultAppearance(),
+    /\s11 Tf/,
+  );
+  assert.match(
+    savedForm.getDropdown("document_type").acroField.getDefaultAppearance(),
+    /\s10 Tf/,
+  );
+  receipt.checks.native_appearance_size_preserved = "pass";
   receipt.downloaded_pdf_sha256 = createHash("sha256")
     .update(completedBytes)
     .digest("hex");
