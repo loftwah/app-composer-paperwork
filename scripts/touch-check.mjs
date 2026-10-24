@@ -41,6 +41,20 @@ try {
   await drag(b.x + 45, b.y + 75, 60, 20);
   assert.equal(await p.locator("#additions [data-object]").count(), 1);
   await p.locator('button[data-tool="select"]').tap();
+  // The compact viewport fits the whole page at initial zoom. Make scrolling
+  // meaningful before asserting the native Select-pan behavior.
+  for (let step = 0; step < 2; step++) {
+    await p.locator("#zoom-in").tap();
+    await p.waitForFunction(
+      () =>
+        document.querySelector("#page").getAttribute("aria-busy") === "false",
+    );
+  }
+  assert(
+    await p
+      .locator("#workspace")
+      .evaluate((el) => el.scrollHeight > el.clientHeight + 40),
+  );
   await drag(200, 550, 0, -140);
   await p.waitForFunction(
     () => document.querySelector("#workspace").scrollTop > 0,
@@ -81,6 +95,7 @@ try {
   const scale = b.width / 595.2756;
   await p.touchscreen.tap(b.x + 110 * scale, b.y + 620 * scale);
   const img = p.locator("#additions image");
+  await img.scrollIntoViewIfNeeded();
   let imageBox = await img.boundingBox(),
     x = Number(await img.getAttribute("x"));
   await drag(

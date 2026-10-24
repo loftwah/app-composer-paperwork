@@ -15,8 +15,17 @@
     <link rel="stylesheet" href="/brand/launcher.css" />
     <script src="/brand/launcher.js" defer></script>
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="icon" href="/icons/paperwork-48-20261024.png" type="image/png" sizes="48x48" />
-    <link rel="apple-touch-icon" href="/icons/paperwork-180-20261024.png" sizes="180x180" />
+    <link
+      rel="icon"
+      href="/icons/paperwork-48-20261024.png"
+      type="image/png"
+      sizes="48x48"
+    />
+    <link
+      rel="apple-touch-icon"
+      href="/icons/paperwork-180-20261024.png"
+      sizes="180x180"
+    />
   </head>
   <body>
     <header class="app-header">
@@ -56,6 +65,17 @@
         >
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M20 15.5A9 9 0 0 1 8.5 4 9 9 0 1 0 20 15.5Z" />
+          </svg>
+        </button>
+        <button
+          id="more-actions"
+          class="icon-button"
+          popovertarget="document-menu"
+          aria-label="More document actions"
+          title="More document actions"
+        >
+          <svg viewBox="0 0 24 24">
+            <path d="M5 12h.01M12 12h.01M19 12h.01" stroke-width="4" />
           </svg>
         </button>
       </div>
@@ -154,6 +174,26 @@
               ><span>Signature</span>
             </button>
           </div>
+          <div class="context-bar">
+            <p id="tool-hint">Select a field to fill it, or choose a tool.</p>
+            <div class="context-options">
+              <label id="color-label"
+                >Ink
+                <select id="color" aria-label="Ink colour">
+                  <option value="#193464">Blue</option>
+                  <option value="#16191e">Black</option>
+                  <option value="#b62b25">Red</option>
+                </select></label
+              ><label id="size-label"
+                >Size
+                <select id="size" aria-label="Tool size">
+                  <option value="1.5">Fine</option>
+                  <option value="2.5" selected>Medium</option>
+                  <option value="5">Bold</option>
+                </select></label
+              ><button id="delete" hidden>Delete selected</button>
+            </div>
+          </div>
           <div class="history">
             <button
               id="undo"
@@ -178,34 +218,12 @@
             </button>
           </div>
         </div>
-        <div class="context-bar">
-          <p id="tool-hint">Select a field to fill it, or choose a tool.</p>
-          <div class="context-options">
-            <label id="color-label"
-              >Ink
-              <select id="color" aria-label="Ink colour">
-                <option value="#193464">Blue</option>
-                <option value="#16191e">Black</option>
-                <option value="#b62b25">Red</option>
-              </select></label
-            ><label id="size-label"
-              >Size
-              <select id="size" aria-label="Tool size">
-                <option value="1.5">Fine</option>
-                <option value="2.5" selected>Medium</option>
-                <option value="5">Bold</option>
-              </select></label
-            ><button id="reuse" hidden>Place signature again</button
-            ><button id="clear-field" hidden>Clear field</button
-            ><button id="delete" hidden>Delete selected</button>
-          </div>
-        </div>
         <div id="text-options" class="text-options" hidden>
           <label
             >Text
             <textarea
               id="text-content"
-              rows="2"
+              rows="1"
               placeholder="Type your text here"
             ></textarea></label
           ><label
@@ -225,6 +243,7 @@
             tabindex="0"
             role="group"
             aria-label="PDF page"
+            aria-describedby="tool-hint"
           >
             <canvas id="canvas"></canvas>
             <div id="fields" class="fields"></div>
@@ -282,6 +301,24 @@
         >Built with App Composer</a
       >
     </footer>
+    <section
+      id="document-menu"
+      class="document-menu"
+      popover="auto"
+      aria-label="Document actions"
+    >
+      <div id="compact-actions" class="compact-actions"></div>
+      <button id="reuse" hidden>Place signature again</button>
+      <button id="clear-field" hidden>Clear field</button>
+      <a href="/help.html" target="_blank" rel="noopener">Help &amp; privacy</a>
+      <button popovertarget="shortcuts">Keyboard shortcuts</button>
+      <a
+        href="https://composer.loftwah.com/paperwork"
+        target="_blank"
+        rel="noopener"
+        >Built with App Composer</a
+      >
+    </section>
     <section
       id="shortcuts"
       class="shortcuts-panel"

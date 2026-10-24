@@ -133,6 +133,22 @@ try {
       n,
     );
   await ready(0);
+  const desktopSpace = await page
+    .locator("#workspace")
+    .evaluate((el) => ({ height: el.clientHeight, viewport: innerHeight }));
+  assert(
+    desktopSpace.height / desktopSpace.viewport >= 0.8,
+    "Desktop document should own at least 80% of the viewport",
+  );
+  assert.equal(await page.locator(".context-bar").isVisible(), false);
+  assert.equal(await page.locator("footer").isVisible(), false);
+  await page.locator('button[data-tool="pen"]').click();
+  await page.locator("#more-actions").click();
+  await page.keyboard.press("Escape");
+  assert.equal(await page.locator("#page").getAttribute("data-tool"), "pen");
+  await page.locator('button[data-tool="select"]').click();
+  receipt.checks.compact_desktop_document_space = desktopSpace;
+
   await page.waitForFunction(
     () => document.querySelector("#document-state").dataset.state === "ready",
   );
@@ -153,6 +169,23 @@ try {
     "changed",
   );
   await page.locator("#undo").click();
+  const originalName = await page
+    .locator('[data-field="full_name"]')
+    .inputValue();
+  await page.locator('[data-field="full_name"]').fill("Clear-menu regression");
+  await page.locator("#more-actions").click();
+  await page.locator("#clear-field").click();
+  assert.equal(await page.locator('[data-field="full_name"]').inputValue(), "");
+  await page.locator("#undo").click();
+  assert.equal(
+    await page.locator('[data-field="full_name"]').inputValue(),
+    "Clear-menu regression",
+  );
+  await page.locator("#undo").click();
+  assert.equal(
+    await page.locator('[data-field="full_name"]').inputValue(),
+    originalName,
+  );
   await page.screenshot({ path: output + "/desktop-fields.png" });
   assert(await page.locator('[data-field="immutable_id"]').isDisabled());
   assert.equal(
@@ -336,6 +369,7 @@ try {
     [350, 312],
     [310, 295],
   ]);
+  await page.locator("#more-actions").click();
   await page.locator("#reuse").click();
   await tap(175, 560);
   await page.screenshot({ path: output + "/desktop-scan.png" });
@@ -530,6 +564,32 @@ try {
     ),
     false,
   );
+
+  const phoneSpace = await phone
+    .locator("#workspace")
+    .evaluate((el) => ({ height: el.clientHeight, viewport: innerHeight }));
+  assert(
+    phoneSpace.height / phoneSpace.viewport >= 0.7,
+    "Phone document should own at least 70% of the viewport",
+  );
+  await phone.setViewportSize({ width: 390, height: 600 });
+  const shortSpace = await phone
+    .locator("#workspace")
+    .evaluate((el) => ({ height: el.clientHeight, viewport: innerHeight }));
+  assert(
+    shortSpace.height / shortSpace.viewport >= 0.6,
+    "Short phone must retain document space",
+  );
+  await phone.setViewportSize({ width: 390, height: 844 });
+  await phone.locator("#more-actions").tap();
+  await phone.locator("[data-open-apps]").tap();
+  await phone.locator("#app-navigation [data-close-apps]").tap();
+  assert(
+    await phone
+      .locator("#more-actions")
+      .evaluate((el) => el === document.activeElement),
+  );
+  receipt.checks.compact_phone_document_space = { phoneSpace, shortSpace };
   assert(await phone.locator("#filename").isVisible());
   assert.equal(
     await phone.locator("#filename").getAttribute("title"),
@@ -556,8 +616,10 @@ try {
     () => document.querySelector("#page").dataset.tool === "image",
   );
   await phone.tap("#surface", { position: { x: 90, y: 230 } });
+  await phone.locator("#more-actions").tap();
   await phone.locator("#theme").tap();
   await phone.screenshot({ path: output + "/phone-light.png" });
+  await phone.locator("#more-actions").tap();
   await phone.locator("#theme").tap();
   await phone.screenshot({ path: output + "/phone-dark.png" });
   assert.equal(

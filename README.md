@@ -19,7 +19,7 @@ pnpm dev
 
 ## Use
 
-Open a PDF, or Try a sample. Select fills native fields and moves additions. Pen, Highlighter, Eraser, Text, Tick and Signature work in the same session. Signature accepts a local transparent PNG; drag its corner to resize. Undo/Redo and page/zoom controls retain edits. The filename and ready/unsaved/exported indicator stay visible on phones. Shortcuts opens an in-place keyboard guide (also available with ? outside fields). Save PDF downloads `-completed.pdf`. Print creates that same completed PDF and hands it to the browser PDF reader, with an explicit open-to-print fallback.
+Open a PDF, or Try a sample. Select fills native fields and moves additions. Pen, Highlighter, Eraser, Text, Tick and Signature work in the same session. Signature accepts a local transparent PNG; drag its corner to resize. Undo/Redo and page/zoom controls retain edits. The filename and ready/unsaved/exported indicator stay visible on phones. More keeps Help, keyboard shortcuts, repeated signature placement and field clearing within reach. On phones it also contains Print, Apps and theme; Open, Save and Undo/Redo remain visible. Ink options share the tool row and appear only when relevant. Shortcuts also opens with ? outside fields. Save PDF downloads `-completed.pdf`. Print creates that same completed PDF and hands it to the browser PDF reader, with an explicit open-to-print fallback.
 
 Added objects remain individually editable in this session. After saving, they are ordinary page content; native PDF fields remain editable on reopening. Download before closing: nothing is silently saved.
 

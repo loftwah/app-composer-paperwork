@@ -32,12 +32,65 @@ let signature: { image: string; ratio: number } | undefined,
   pendingOpen: (() => void) | undefined;
 let fieldStart: Snapshot | undefined;
 let focusedField = "";
+let statusTimer: ReturnType<typeof setTimeout> | undefined;
 const status = (text: string, error = false) => {
   $("status").textContent = text;
   $("status").classList.toggle("error", error);
+  $("status").dataset.visible =
+    error || !/^\d+ pages ready\./.test(text) ? "true" : "false";
+  if (statusTimer) clearTimeout(statusTimer);
+  if (!error)
+    statusTimer = setTimeout(() => {
+      $("status").dataset.visible = "false";
+    }, 5000);
 };
+const headerActions = document.querySelector<HTMLElement>(".header-actions")!;
+const documentMenu = $("document-menu");
+const compactActions = $("compact-actions");
+const compactQuery = matchMedia("(max-width: 700px)");
+const movableActions = [
+  button("print"),
+  document.querySelector<HTMLButtonElement>("[data-open-apps]")!,
+  button("theme"),
+];
+let appsOpenedFromMenu = false;
+const themeLabel = document.createElement("span");
+themeLabel.className = "menu-control-label";
+themeLabel.textContent = "Dark theme";
+button("theme").append(themeLabel);
+function syncActionPlacement() {
+  for (const action of movableActions) {
+    const parent = doc && compactQuery.matches ? compactActions : headerActions;
+    if (action.parentElement === parent) continue;
+    if (parent === compactActions) parent.append(action);
+    else parent.insertBefore(action, button("more-actions"));
+  }
+}
+compactQuery.addEventListener("change", syncActionPlacement);
+for (const action of movableActions)
+  action.addEventListener(
+    "click",
+    () => {
+      if (!documentMenu.matches(":popover-open")) return;
+      if (action.hasAttribute("data-open-apps") && compactQuery.matches)
+        appsOpenedFromMenu = true;
+      documentMenu.hidePopover();
+    },
+    { capture: true },
+  );
+$("app-navigation").addEventListener("close", () => {
+  if (appsOpenedFromMenu) {
+    appsOpenedFromMenu = false;
+    button("more-actions").focus({ preventScroll: true });
+  }
+});
+for (const id of ["reuse", "clear-field"])
+  button(id).addEventListener("click", () => documentMenu.hidePopover(), {
+    capture: true,
+  });
 function syncChrome() {
   document.body.classList.toggle("has-document", !!doc);
+  syncActionPlacement();
   for (const id of ["open", "start-open", "sample"]) button(id).disabled = busy;
   button("save").disabled = button("print").disabled = !doc || busy;
   button("save").textContent = busy && doc ? "Preparing…" : "Save PDF";
@@ -397,6 +450,7 @@ function setTool(value: string) {
     if (el.tagName === "BUTTON")
       el.setAttribute("aria-pressed", String(el.dataset.tool === tool));
   $("tool-hint").textContent = hints[value];
+  if (doc && !busy) status(hints[value]);
   if (value !== "select") selected = "";
   showSelection();
   drawAdditions();
@@ -535,6 +589,10 @@ function drawAdditions(draft?: Addition) {
   }
 }
 function showSelection() {
+  $("color-label").hidden = !["pen", "highlight", "text", "tick"].includes(
+    tool,
+  );
+  $("size-label").hidden = !["pen", "highlight", "tick"].includes(tool);
   const item = state.additions.find((a) => a.id === selected);
   button("delete").hidden = !item;
   $("text-options").hidden = item?.kind !== "text";
@@ -974,7 +1032,7 @@ function redo() {
 }
 button("undo").onclick = undo;
 button("redo").onclick = redo;
-// The same actions remain reachable on narrow screens, beside the tool options.
+// Keep history visible beside Open/Save on narrow screens, without another row.
 const mobileHistory = document.createElement("div");
 mobileHistory.className = "mobile-history";
 for (const [id, action] of [
@@ -986,7 +1044,7 @@ for (const [id, action] of [
   copy.onclick = action;
   mobileHistory.append(copy);
 }
-$("color-label").parentElement!.append(mobileHistory);
+headerActions.insertBefore(mobileHistory, button("more-actions"));
 button("signature").onclick = () =>
   $<HTMLInputElement>("signature-file").click();
 button("reuse").onclick = () => setTool("image");
@@ -1168,11 +1226,6 @@ window.addEventListener("keydown", (event) => {
     shortcuts.togglePopover();
     return;
   }
-  if (
-    shortcuts.matches(":popover-open") &&
-    (event.key === "Escape" || shortcuts.contains(target))
-  )
-    return;
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
     event.preventDefault();
     void save();
@@ -1183,6 +1236,13 @@ window.addEventListener("keydown", (event) => {
     void save(true);
     return;
   }
+  if (
+    (shortcuts.matches(":popover-open") &&
+      (event.key === "Escape" || shortcuts.contains(target))) ||
+    (documentMenu.matches(":popover-open") &&
+      (event.key === "Escape" || documentMenu.contains(target)))
+  )
+    return;
   if (editing) return;
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
     event.preventDefault();
@@ -1252,7 +1312,8 @@ async function boot() {
     $("app-title").textContent = config.title;
     mark.title = config.title;
     mark.setAttribute("aria-label", `${config.title} home`);
-    document.title = config.title + " — Fill, sign and edit PDFs in your browser";
+    document.title =
+      config.title + " — Fill, sign and edit PDFs in your browser";
     document.querySelector(".start > p")!.textContent = config.intro;
     document.documentElement.dataset.theme =
       config.theme === "daylight" ? "light" : "dark";
