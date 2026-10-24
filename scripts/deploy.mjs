@@ -73,7 +73,7 @@ const verified = await verifyStaticAssets({
     bytes: readFileSync(path === "/" ? "dist/index.html" : "dist" + path),
     ...(path.endsWith(".png") ? { type: "image/png" } : {}),
     ...(path.endsWith(".webp") ? { type: "image/webp" } : {}),
-    ...(path === "/" ? { csp: true } : {}),
+    ...(path === "/" || path === "/help.html" ? { csp: true } : {}),
   })),
 });
 console.log(

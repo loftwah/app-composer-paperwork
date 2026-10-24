@@ -45,6 +45,11 @@ export async function verifyStaticAssets({
           )
             throw Error("static CSP boundary missing");
           if (
+            asset.csp &&
+            !response.headers.get("cache-control")?.includes("no-transform")
+          )
+            throw Error("HTML transformation protection missing");
+          if (
             digest(new Uint8Array(await response.arrayBuffer())) !==
             asset.sha256
           )
