@@ -49,3 +49,5 @@ The supplied verifier's ROI differences establish changed pixels, not exact obje
 [Contributing](CONTRIBUTING.md) · [Accessibility](ACCESSIBILITY.md) · [Security](SECURITY.md) · [MIT licence](LICENSE)
 
 Continuous mobile input regression (native Chromium touch events, including two-finger zoom and PNG move/resize): `PAPERWORK_ORIGIN=https://composer-paperwork.loftwah.workers.dev node scripts/touch-check.mjs`. Without an origin override, start the built preview on 127.0.0.1:4264 first. This tests the browser input pipeline; it does not establish physical iPhone or stylus acceptance.
+
+Native-widget rotation regression: `PAPERWORK_ORIGIN=https://composer-paperwork.loftwah.workers.dev node scripts/rotated-fields-check.mjs`. It derives 90°/270° variants from the unchanged owner corpus in an owned temporary root, checks every native widget's actual browser bounds against the PDF viewport, and inspects downloaded field values. The temporary source variants are removed on success and failure.
