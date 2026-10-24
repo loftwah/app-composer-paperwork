@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { PDFDocument, PDFName, PDFString, degrees } from "pdf-lib";
+import {
+  PDFDocument,
+  PDFName,
+  PDFString,
+  degrees,
+  decodePDFRawStream,
+} from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import { getDocument, OPS } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { readFileSync, mkdtempSync, rmSync } from "node:fs";
@@ -547,6 +553,239 @@ test("removed indirect metadata is purged, while metadata objects shared by a pa
         assert.equal(result.context.lookup(author), undefined);
       }
     }
+  } finally {
+    await doc.pdf.loadingTask.destroy();
+  }
+});
+
+function appearanceBytes(stream) {
+  try {
+    return Buffer.from(decodePDFRawStream(stream).decode());
+  } catch {
+    return Buffer.from(stream.getContentsString());
+  }
+}
+
+test("list rows and tight single-line values stay inside their widget after an edit", async () => {
+  const doc = await fixture("public/examples/garden-form.pdf");
+  try {
+    const saved = await PDFDocument.load(
+        await exportDocument(doc, {
+          values: {
+            ...doc.initial.values,
+            interests: ["Flowers", "Vegetables"],
+            experience: ["Experienced"],
+          },
+          additions: [],
+        }),
+      ),
+      form = saved.getForm();
+    // The sample declares 23pt for a three-row list sized for Helvetica. The
+    // bundled font is taller, so every row must still sit inside the box.
+    const list = form.getOptionList("interests"),
+      widget = list.acroField.getWidgets()[0],
+      height = widget
+        .getAppearances()
+        .normal.dict.lookup(PDFName.of("BBox"))
+        .lookup(3)
+        .asNumber(),
+      operators = appearanceBytes(widget.getAppearances().normal).toString(),
+      baselines = [...operators.matchAll(/1 0 0 1 -?[\d.]+ (-?[\d.]+) Tm/g)].map(
+        (match) => Number(match[1]),
+      );
+    assert.equal(baselines.length, 3);
+    for (const baseline of baselines)
+      assert(
+        baseline >= 0 && baseline <= height,
+        `option row at ${baseline} is outside the ${height}pt widget`,
+      );
+    const combo = form.getDropdown("experience"),
+      size = Number(
+        combo.acroField.getDefaultAppearance().match(/(\d*\.?\d+)\s+Tf/)[1],
+      );
+    assert(size < 24, `declared 24pt should be reduced, received ${size}`);
+    assert(size > 15, `reduced too far, received ${size}`);
+  } finally {
+    await doc.pdf.loadingTask.destroy();
+  }
+});
+
+test("a changed field prints even when its source widget omitted the print flag", async () => {
+  const doc = await fixture("public/examples/garden-form.pdf");
+  try {
+    const source = await PDFDocument.load(doc.bytes);
+    for (const name of ["fullName", "date"])
+      for (const widget of source
+        .getForm()
+        .getTextField(name)
+        .acroField.getWidgets())
+        widget.dict.delete(PDFName.of("F"));
+    doc.bytes = await source.save();
+    const saved = await PDFDocument.load(
+        await exportDocument(doc, {
+          values: { ...doc.initial.values, fullName: "Alex Example II" },
+          additions: [],
+        }),
+      ),
+      form = saved.getForm();
+    assert.equal(
+      form.getTextField("fullName").acroField.getWidgets()[0].getFlags() & 4,
+      4,
+      "an edited value must be shown on paper",
+    );
+    assert.equal(
+      form.getTextField("date").acroField.getWidgets()[0].dict.has(
+        PDFName.of("F"),
+      ),
+      false,
+      "untouched widgets keep their source flags",
+    );
+  } finally {
+    await doc.pdf.loadingTask.destroy();
+  }
+});
+
+test("changing a radio selection or a check box keeps the designer's own appearance art", async () => {
+  const doc = await fixture("public/examples/garden-form.pdf");
+  try {
+    const source = await PDFDocument.load(doc.bytes),
+      saved = await PDFDocument.load(
+        await exportDocument(doc, {
+          values: {
+            ...doc.initial.values,
+            session: "Afternoon",
+            updates: true,
+          },
+          additions: [],
+        }),
+      ),
+      before = source.getForm(),
+      after = saved.getForm();
+    for (const name of ["session", "updates"]) {
+      const from = before.getField(name).acroField.getWidgets(),
+        to = after.getField(name).acroField.getWidgets();
+      for (const [index, widget] of from.entries()) {
+        const states = [widget.getOnValue().decodeText(), "Off"];
+        for (const state of states) {
+          const previous = widget.getAppearances().normal.lookup(
+              PDFName.of(state),
+            ),
+            current = to[index].getAppearances().normal.lookup(
+              PDFName.of(state),
+            );
+          assert(
+            previous && current,
+            `${name} ${state} appearance is missing`,
+          );
+          assert.deepEqual(
+            appearanceBytes(current),
+            appearanceBytes(previous),
+            `${name} ${state} appearance art was replaced`,
+          );
+        }
+      }
+    }
+    assert.equal(after.getRadioGroup("session").getSelected(), "Afternoon");
+    assert.equal(after.getCheckBox("updates").isChecked(), true);
+    const chosen = after.getRadioGroup("session").acroField.getWidgets()[1];
+    assert.equal(
+      chosen.getAppearanceState().decodeText(),
+      chosen.getOnValue().decodeText(),
+    );
+    assert.equal(
+      after
+        .getRadioGroup("session")
+        .acroField.getWidgets()[0]
+        .getAppearanceState()
+        .decodeText(),
+      "Off",
+    );
+  } finally {
+    await doc.pdf.loadingTask.destroy();
+  }
+});
+
+test("synthetic awkward widgets export without losing print flags, custom art or rotation", async () => {
+  const doc = await fixture("tests/fixtures/interop-264/awkward-widgets.pdf");
+  try {
+    const initial = {
+      unprintable_value: "Completed but not printable",
+      printable_value: "Prints normally",
+      tight_list: ["Herbs"],
+      tight_combo: [],
+      turned_label: "SIDEWAYS",
+      custom_tick: false,
+      locked_value: "LOCKED-001",
+      silent_tick: false,
+      long_list: ["Fictional option 3"],
+    };
+    doc.initial = { values: initial, additions: [] };
+    const source = await PDFDocument.load(doc.bytes),
+      customBefore = appearanceBytes(
+        source
+          .getForm()
+          .getCheckBox("custom_tick")
+          .acroField.getWidgets()[0]
+          .getAppearances()
+          .normal.lookup(PDFName.of("Yes")),
+      ),
+      saved = await PDFDocument.load(
+        await exportDocument(doc, {
+          values: {
+            ...initial,
+            unprintable_value: "Completed by the user",
+            tight_list: ["Flowers", "Vegetables"],
+            tight_combo: ["Experienced"],
+            turned_label: "SIDEWAYS 2",
+            custom_tick: true,
+            long_list: ["Fictional option 7"],
+          },
+          additions: [],
+        }),
+      ),
+      form = saved.getForm();
+    assert.equal(
+      form.getTextField("unprintable_value").acroField.getWidgets()[0].getFlags() & 4,
+      4,
+    );
+    assert.equal(form.getCheckBox("custom_tick").isChecked(), true);
+    assert.deepEqual(
+      appearanceBytes(
+        form
+          .getCheckBox("custom_tick")
+          .acroField.getWidgets()[0]
+          .getAppearances()
+          .normal.lookup(PDFName.of("Yes")),
+      ),
+      customBefore,
+      "custom check art must survive the edit",
+    );
+    assert.equal(
+      form.getTextField("turned_label").getText(),
+      "SIDEWAYS 2",
+    );
+    assert.equal(
+      form
+        .getTextField("turned_label")
+        .acroField.getWidgets()[0]
+        .getAppearanceCharacteristics()
+        .getRotation(),
+      90,
+      "the source /MK rotation is retained",
+    );
+    assert.equal(
+      form.getTextField("locked_value").getText(),
+      "LOCKED-001",
+    );
+    assert.deepEqual(form.getOptionList("tight_list").getSelected(), [
+      "Flowers",
+      "Vegetables",
+    ]);
+    assert.match(
+      form.getOptionList("long_list").acroField.getDefaultAppearance(),
+      /\s12 Tf/,
+      "a list with more rows than fit keeps its declared size instead of shrinking to nothing",
+    );
   } finally {
     await doc.pdf.loadingTask.destroy();
   }
