@@ -600,6 +600,69 @@ dialog h2 {
   gap: 12px;
   margin-top: 24px;
 }
+.properties-dialog {
+  width: min(560px, calc(100vw - 24px));
+  max-width: 560px;
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+  padding: 24px;
+}
+.properties-dialog p {
+  color: var(--muted);
+  line-height: 1.5;
+}
+.properties-fields {
+  display: grid;
+  gap: 8px;
+}
+.properties-fields label {
+  margin-top: 8px;
+  font-weight: 600;
+}
+.properties-fields textarea {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 16px;
+  resize: vertical;
+}
+.properties-technical {
+  margin-top: 20px;
+}
+.properties-technical summary {
+  min-height: 44px;
+  cursor: pointer;
+  padding-block: 12px;
+}
+.properties-technical dl {
+  font-size: 0.9rem;
+}
+.properties-technical dt {
+  margin-top: 12px;
+  color: var(--muted);
+}
+.properties-technical dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+.properties-note,
+#properties-feedback {
+  font-size: 0.85rem;
+}
+.properties-actions,
+.properties-actions > div {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.properties-actions {
+  justify-content: space-between;
+  margin-top: 20px;
+}
 body.dragging:after {
   content: "Drop your PDF to open it";
   position: fixed;

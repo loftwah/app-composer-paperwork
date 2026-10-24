@@ -12,6 +12,12 @@ import fontkit from "@pdf-lib/fontkit";
 import * as pdfjs from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import type { PDFDocumentProxy, PageViewport } from "pdfjs-dist";
+import {
+  readMetadata,
+  includeXmp,
+  type DocumentMetadata,
+  type MetadataEdit,
+} from "./metadata.ts";
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 export const LIMITS = {
@@ -43,6 +49,7 @@ export type FieldValue = string | string[] | boolean;
 export type Snapshot = {
   additions: Addition[];
   values: Record<string, FieldValue>;
+  metadata?: MetadataEdit;
 };
 export type Widget = {
   id: string;
@@ -74,6 +81,7 @@ export type OpenDocument = {
   fontBytes: Uint8Array;
   font: Awaited<ReturnType<PDFDocument["embedFont"]>>;
   note: string;
+  metadata: DocumentMetadata;
 };
 export const clone = <T>(value: T): T => structuredClone(value);
 export async function openDocument(
@@ -172,12 +180,26 @@ export async function openDocument(
     );
     parsed.registerFontkit(fontkit);
     const font = await parsed.embedFont(fontBytes, { subset: true });
+    const metadata = readMetadata(parsed);
+    if (metadata.xmp) {
+      try {
+        const packet = (await pdf.getMetadata()).metadata;
+        if (packet) includeXmp(metadata, packet);
+      } catch {
+        metadata.details.push({
+          name: "XMP packet",
+          value:
+            "Could not read this packet. Applying property changes removes it.",
+        });
+      }
+    }
     return {
       bytes,
       pdf,
       viewports,
       widgets,
       initial: { additions: [], values },
+      metadata,
       name,
       fontBytes,
       font,

@@ -1,6 +1,7 @@
 import { validateConfiguration } from "./config.ts";
 import { exportDocument } from "./export.ts";
 import { lines } from "./text.ts";
+import { PROPERTY_KEYS, type MetadataEdit } from "./metadata.ts";
 import "./style.css";
 import {
   openDocument,
@@ -46,6 +47,9 @@ const status = (text: string, error = false) => {
 };
 const headerActions = document.querySelector<HTMLElement>(".header-actions")!;
 const documentMenu = $("document-menu");
+const propertiesDialog = $<HTMLDialogElement>("properties-dialog");
+let clearOtherProperties = false;
+let propertiesDocument: OpenDocument | undefined;
 const compactActions = $("compact-actions");
 const compactQuery = matchMedia("(max-width: 700px)");
 const movableActions = [
@@ -93,6 +97,7 @@ function syncChrome() {
   syncActionPlacement();
   for (const id of ["open", "start-open", "sample"]) button(id).disabled = busy;
   button("save").disabled = button("print").disabled = !doc || busy;
+  button("properties").disabled = !doc || busy;
   button("save").textContent = busy && doc ? "Preparing…" : "Save PDF";
   const kind = busy
     ? "preparing"
@@ -147,7 +152,120 @@ function settleField() {
   syncChrome();
   updateHistory();
 }
+function showPropertyDetails() {
+  if (!doc) return;
+  const details = $("property-details");
+  details.replaceChildren();
+  const rows = clearOtherProperties
+    ? []
+    : doc.metadata.details.filter(
+        (row) => !state.metadata || !row.name.startsWith("XMP "),
+      );
+  for (const row of rows.slice(0, 100)) {
+    const term = document.createElement("dt"),
+      value = document.createElement("dd");
+    term.textContent = row.name;
+    value.textContent =
+      row.value.length > 1024 ? row.value.slice(0, 1024) + "…" : row.value;
+    details.append(term, value);
+  }
+  if (!rows.length) {
+    const value = document.createElement("dd");
+    value.textContent = clearOtherProperties
+      ? "These properties will be cleared."
+      : "No additional document properties.";
+    details.append(value);
+  }
+  if (rows.length > 100) {
+    const value = document.createElement("dd");
+    value.textContent = `${rows.length - 100} additional properties. Clear properties removes these too.`;
+    details.append(value);
+  }
+  $("property-xmp").textContent =
+    doc.metadata.xmp && !state.metadata && !clearOtherProperties
+      ? "Embedded XMP packet present. Applying changes removes it."
+      : "No embedded XMP packet in the next export.";
+}
+function sizePropertyInput(input: HTMLTextAreaElement) {
+  input.style.height = "auto";
+  input.style.height = `${Math.min(132, Math.max(44, input.scrollHeight + 2))}px`;
+}
+for (const key of Object.keys(PROPERTY_KEYS)) {
+  const input = $<HTMLTextAreaElement>(`property-${key}`);
+  input.addEventListener("input", () => sizePropertyInput(input));
+}
+button("properties").onclick = () => {
+  if (!doc || busy) return;
+  settleField();
+  documentMenu.hidePopover();
+  const properties = state.metadata || doc.metadata.properties;
+  clearOtherProperties = state.metadata?.clearOther ?? false;
+  for (const key of Object.keys(
+    PROPERTY_KEYS,
+  ) as (keyof typeof PROPERTY_KEYS)[])
+    $<HTMLTextAreaElement>(`property-${key}`).value = properties[key];
+  $("properties-feedback").textContent = "";
+  showPropertyDetails();
+  propertiesDocument = doc;
+  propertiesDialog.showModal();
+  for (const key of Object.keys(PROPERTY_KEYS))
+    sizePropertyInput($<HTMLTextAreaElement>(`property-${key}`));
+};
+button("clear-properties").onclick = () => {
+  for (const key of Object.keys(PROPERTY_KEYS))
+    $<HTMLTextAreaElement>(`property-${key}`).value = "";
+  clearOtherProperties = true;
+  showPropertyDetails();
+  $("properties-feedback").textContent =
+    "Creator, producer, dates and custom properties will also be cleared. Apply to confirm; Cancel keeps them. Page content and attachments stay unchanged.";
+  for (const key of Object.keys(PROPERTY_KEYS))
+    sizePropertyInput($<HTMLTextAreaElement>(`property-${key}`));
+};
+button("cancel-properties").onclick = () => propertiesDialog.close();
+propertiesDialog.addEventListener("close", () => {
+  propertiesDocument = undefined;
+  button("more-actions").focus({ preventScroll: true });
+});
+$("properties-form").onsubmit = (event) => {
+  event.preventDefault();
+  if (!doc || doc !== propertiesDocument) {
+    $("properties-feedback").textContent =
+      "The document changed. Close properties and reopen them for the current file.";
+    return;
+  }
+  const next = { clearOther: clearOtherProperties } as MetadataEdit;
+  for (const key of Object.keys(
+    PROPERTY_KEYS,
+  ) as (keyof typeof PROPERTY_KEYS)[])
+    next[key] = $<HTMLTextAreaElement>(`property-${key}`).value;
+  const original = { ...doc.metadata.properties, clearOther: false };
+  const unchanged =
+    !next.clearOther &&
+    Object.keys(PROPERTY_KEYS).every(
+      (key) =>
+        next[key as keyof typeof PROPERTY_KEYS] ===
+        original[key as keyof typeof PROPERTY_KEYS],
+    );
+  const metadata = unchanged ? undefined : next;
+  if (JSON.stringify(metadata) !== JSON.stringify(state.metadata)) {
+    remember();
+    if (metadata) state.metadata = metadata;
+    else delete state.metadata;
+    dirty = hasUnexportedEdits();
+    syncChrome();
+    updateHistory();
+    status(
+      "Document properties updated. Save PDF to include them. Undo restores the previous properties.",
+    );
+  }
+  propertiesDialog.close();
+};
 function requestOpen(action: () => void) {
+  if (propertiesDialog.open) {
+    $("properties-feedback").textContent =
+      "Apply or cancel document properties before opening another PDF.";
+    return;
+  }
   settleField();
   if (dirty) {
     pendingOpen = action;
@@ -1213,6 +1331,14 @@ window.onbeforeunload = (event) => {
   }
 };
 window.addEventListener("keydown", (event) => {
+  if (propertiesDialog.open) {
+    if (
+      (event.ctrlKey || event.metaKey) &&
+      ["s", "p"].includes(event.key.toLowerCase())
+    )
+      event.preventDefault();
+    return;
+  }
   if (
     document.querySelector<HTMLDialogElement>("#app-navigation")?.open ||
     (event.target instanceof Element && event.target.closest("#app-navigation"))
@@ -1283,6 +1409,7 @@ let dragDepth = 0;
 window.addEventListener("dragenter", (e) => {
   if (e.dataTransfer?.types.includes("Files")) {
     e.preventDefault();
+    if (propertiesDialog.open) return;
     dragDepth++;
     document.body.classList.add("dragging");
   }

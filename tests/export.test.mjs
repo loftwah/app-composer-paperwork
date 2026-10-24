@@ -395,3 +395,159 @@ test("escaped source appearances retain native font size, colour and top-aligned
     await doc.pdf.loadingTask.destroy();
   }
 });
+
+test("document property edits preserve the form and unrelated properties, with consistent Unicode metadata and no stale XMP", async () => {
+  const doc = await fixture("public/examples/garden-form.pdf");
+  try {
+    const source = await PDFDocument.load(doc.bytes, { updateMetadata: false });
+    source.setTitle("Original fictional title");
+    source.setAuthor("Original fictional author");
+    source.setCreator("Fictional Fixture Maker");
+    source.setProducer("Fixture Writer");
+    source.context
+      .lookup(source.context.trailerInfo.Info)
+      .set(
+        PDFName.of("FictionalCustom"),
+        PDFString.of("retain this custom property"),
+      );
+    const packet = source.context.register(
+      source.context.stream("<x:xmpmeta>FICTIONAL_STALE_XMP_489</x:xmpmeta>"),
+    );
+    source.catalog.set(PDFName.of("Metadata"), packet);
+    doc.bytes = await source.save();
+    const original = await PDFDocument.load(
+      await exportDocument(doc, doc.initial),
+      { updateMetadata: false },
+    );
+    assert.equal(original.getAuthor(), "Original fictional author");
+    assert.equal(
+      original.catalog.lookup(PDFName.of("Metadata")).getContentsString(),
+      "<x:xmpmeta>FICTIONAL_STALE_XMP_489</x:xmpmeta>",
+    );
+    const metadata = {
+      title: "Résumé 日本語 ✨",
+      author: "Alex Example",
+      subject: "Fictional note\nSecond line",
+      keywords: "synthetic, demo; café",
+      clearOther: false,
+    };
+    const bytes = await exportDocument(doc, { ...doc.initial, metadata });
+    const edited = await PDFDocument.load(bytes, { updateMetadata: false });
+    assert.equal(edited.getTitle(), metadata.title);
+    assert.equal(edited.getAuthor(), metadata.author);
+    assert.equal(edited.getSubject(), metadata.subject);
+    assert.equal(edited.getKeywords(), metadata.keywords);
+    assert.equal(edited.getCreator(), "Fictional Fixture Maker");
+    assert.equal(edited.getProducer(), "Fixture Writer");
+    assert.equal(
+      edited.context
+        .lookup(edited.context.trailerInfo.Info)
+        .lookup(PDFName.of("FictionalCustom"))
+        .decodeText(),
+      "retain this custom property",
+    );
+    assert.equal(edited.catalog.has(PDFName.of("Metadata")), false);
+    assert(
+      !Buffer.from(bytes).includes(Buffer.from("FICTIONAL_STALE_XMP_489")),
+    );
+    assert.equal(
+      edited.getForm().getTextField("fullName").getText(),
+      doc.initial.values.fullName,
+    );
+    assert.equal(edited.getPageCount(), doc.viewports.length);
+    const cleared = await PDFDocument.load(
+      await exportDocument(doc, {
+        ...doc.initial,
+        metadata: {
+          title: "",
+          author: "",
+          subject: "",
+          keywords: "",
+          clearOther: true,
+        },
+      }),
+      { updateMetadata: false },
+    );
+    assert.equal(
+      cleared.context.lookup(cleared.context.trailerInfo.Info).keys().length,
+      0,
+    );
+    assert.equal(cleared.catalog.has(PDFName.of("Metadata")), false);
+    assert.equal(
+      cleared.getForm().getTextField("fullName").getText(),
+      doc.initial.values.fullName,
+    );
+  } finally {
+    await doc.pdf.loadingTask.destroy();
+  }
+});
+
+test("removed indirect metadata is purged, while metadata objects shared by a page remain intact", async () => {
+  const doc = await fixture("public/examples/garden-form.pdf");
+  try {
+    for (const shared of [false, true]) {
+      const source = await PDFDocument.load(doc.bytes, {
+        updateMetadata: false,
+      });
+      const author = source.context.register(
+        PDFString.of("FICTIONAL_OLD_INDIRECT_AUTHOR"),
+      );
+      const secret = source.context.register(
+        PDFString.of("FICTIONAL_OLD_INDIRECT_CUSTOM"),
+      );
+      const custom = source.context.register(
+        source.context.obj({ Value: secret }),
+      );
+      const info = source.context.lookup(source.context.trailerInfo.Info);
+      info.set(PDFName.of("Author"), author);
+      info.set(PDFName.of("FictionalCustom"), custom);
+      const packet = source.context.register(
+        source.context.stream("<x:xmpmeta>FICTIONAL_SHARED_PACKET</x:xmpmeta>"),
+      );
+      source.catalog.set(PDFName.of("Metadata"), packet);
+      if (shared) {
+        source.getPage(0).node.set(PDFName.of("Metadata"), packet);
+        source.getPage(0).node.set(PDFName.of("FictionalAudit"), author);
+      }
+      const altered = { ...doc, bytes: await source.save() };
+      const result = await PDFDocument.load(
+        await exportDocument(altered, {
+          ...doc.initial,
+          metadata: {
+            title: "",
+            author: "",
+            subject: "",
+            keywords: "",
+            clearOther: true,
+          },
+        }),
+        { updateMetadata: false },
+      );
+      assert.equal(
+        result.context.lookup(result.context.trailerInfo.Info).keys().length,
+        0,
+      );
+      assert(!result.catalog.has(PDFName.of("Metadata")));
+      assert.equal(result.context.lookup(custom), undefined);
+      assert.equal(result.context.lookup(secret), undefined);
+      if (shared) {
+        assert.equal(
+          result
+            .getPage(0)
+            .node.lookup(PDFName.of("Metadata"))
+            .getContentsString(),
+          "<x:xmpmeta>FICTIONAL_SHARED_PACKET</x:xmpmeta>",
+        );
+        assert.equal(
+          result.context.lookup(author).decodeText(),
+          "FICTIONAL_OLD_INDIRECT_AUTHOR",
+        );
+      } else {
+        assert.equal(result.context.lookup(packet), undefined);
+        assert.equal(result.context.lookup(author), undefined);
+      }
+    }
+  } finally {
+    await doc.pdf.loadingTask.destroy();
+  }
+});

@@ -23,6 +23,8 @@ Open a PDF, or Try a sample. Select fills native fields and moves additions. Pen
 
 Added objects remain individually editable in this session. After saving, they are ordinary page content; native PDF fields remain editable on reopening. Download before closing: nothing is silently saved.
 
+More → Document properties shows title, author, subject and keywords for editing, with creator/producer/date/custom/XMP details for inspection. Apply is one Undo/Redo step; Cancel or Escape discards the dialog draft. Save/Print includes applied metadata, including Unicode text. Unedited metadata is preserved. Changed properties remove the conflicting document XMP packet; Clear properties also clears the document Info dictionary. Only newly unreferenced metadata objects are purged, preserving objects shared with pages. This is document property editing, not page redaction or removal of attachments/metadata elsewhere in the file.
+
 Supports AcroForm text/multiline/check/radio/dropdown/list fields; read-only and max-length constraints; flat/scanned pages; mixed sizes, crop boxes and cardinal rotations. Up to 30 MB, 100 pages, 2,000 widgets and 3,000 additions, with bounded canvas and ink sizes. Password-protected, XFA and already certificate-signed documents are refused. The bundled font supports Latin and extended Latin, not every writing system. Unsupported text fails export with edits retained. This is visual signing; no certificate or identity workflow.
 
 ## Independent mini-app contract
