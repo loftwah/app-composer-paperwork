@@ -55,6 +55,7 @@ const paths = [
   "/build.json",
   "/",
   "/help.html",
+  "/artwork/press-20261024.webp",
   "/paperwork.json",
   "/app.manifest.json",
   "/examples/garden-form.pdf",
@@ -65,6 +66,7 @@ const verified = await verifyStaticAssets({
     path,
     bytes: readFileSync(path === "/" ? "dist/index.html" : "dist" + path),
     ...(path.endsWith(".png") ? { type: "image/png" } : {}),
+    ...(path.endsWith(".webp") ? { type: "image/webp" } : {}),
     ...(path === "/" ? { csp: true } : {}),
   })),
 });

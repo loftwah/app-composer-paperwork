@@ -1,0 +1,15 @@
+{
+  "date": "2026-10-24",
+  "direction": "User-selected punchy print shop: charcoal, orange, ink marks and dry humour",
+  "tool": "Built-in ImageGen",
+  "selection": "Agent-selected artwork within the requested direction; not separate owner approval",
+  "master": "artwork/press-20261024.png",
+  "masterSha256": "4ed33aae854f36d20ee16725ea686910fe468d44658788e72f38ac3b71696e39",
+  "web": "public/artwork/press-20261024.webp",
+  "webSha256": "0ea784da6badbfd41e197d66b267b01b66fc3838e81e9c5e03044fe55b1652b3",
+  "dimensions": [1152, 768],
+  "alpha": true,
+  "export": "cwebp -q 88 -alpha_q 100 -resize 1152 768",
+  "prompt": "artwork/prompt-20261024.txt",
+  "identity": "Existing Paperwork document icon and independent app identities retained"
+}

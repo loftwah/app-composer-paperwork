@@ -21,10 +21,17 @@
       <a class="wordmark" href="/" aria-label="Paperwork home"
         ><svg viewBox="0 0 28 32" aria-hidden="true">
           <path d="M4 2h13l7 7v21H4zM17 2v8h7M9 17h10M9 23h7" /></svg
-        >Paperwork</a
-      ><span id="filename" class="filename"
-        >One document. One editor. One finished PDF.</span
+        ><span id="app-title">Paperwork</span></a
       >
+      <div class="document-meta">
+        <span id="filename" class="filename">Your PDF</span>
+        <span id="document-state" class="document-state" data-state="ready">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m5 12 4 4L19 6" />
+          </svg>
+          <span>Ready to edit</span>
+        </span>
+      </div>
       <div class="header-actions app-tools">
         <button id="open" title="Open a PDF">Open PDF</button
         ><button id="save" class="primary" disabled>Save PDF</button
@@ -54,7 +61,10 @@
     <main>
       <section id="welcome" class="welcome">
         <div class="start">
-          <h1>A form shouldn’t need<br />a printer and scanner.</h1>
+          <h1>
+            A <span class="ink-underline">form</span> shouldn’t need<br />a
+            printer and scanner.
+          </h1>
           <p>
             Fill the fields. Write on the page. Add your signature.<br
               class="desktop-break"
@@ -77,26 +87,16 @@
             You can also drop a PDF here. Up to 30 MB / 100 pages.
           </p>
         </div>
-        <div class="sample-peek">
-          <div class="paper-peek">
-            <span>RIVERBANK COMMUNITY GARDEN</span>
-            <h2>A little time<br />outdoors.</h2>
-            <p>Volunteer day registration</p>
-            <div class="peek-field">Full name<strong>Alex Example</strong></div>
-            <div class="peek-field">
-              What would you like to help with?<strong
-                >Planting herbs and painting signs.</strong
-              >
-            </div>
-            <p class="peek-check">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="m4 12 5 5L20 5" />
-              </svg>
-              I’ll bring a hat.
-            </p>
-            <p class="peek-footer">A fictional sample, ready to try.</p>
-          </div>
-        </div>
+        <figure class="press-illustration">
+          <img
+            src="/artwork/press-20261024.webp"
+            width="1152"
+            height="768"
+            alt="An orange stamp press and its pencil arm put ink and a tick on a sheet of paper."
+            fetchpriority="high"
+          />
+          <figcaption>A small victory over office equipment.</figcaption>
+        </figure>
       </section>
       <section id="editor" class="editor" hidden aria-label="PDF editor">
         <div class="toolbar" role="toolbar" aria-label="Editing tools">
@@ -265,12 +265,93 @@
       <p id="status" class="status" role="status" aria-live="polite"></p>
     </main>
     <footer>
-      <a href="/help.html">Help &amp; privacy</a
-      ><span>Files stay on your device.</span
-      ><a href="https://composer.loftwah.com/paperwork"
+      <div class="footer-help">
+        <a href="/help.html">Help &amp; privacy</a>
+        <button
+          class="shortcuts-trigger"
+          popovertarget="shortcuts"
+          title="Keyboard shortcuts (?)"
+        >
+          Shortcuts <kbd>?</kbd>
+        </button>
+      </div>
+      <span>Files stay on your device.</span>
+      <a href="https://composer.loftwah.com/paperwork"
         >Built with App Composer</a
       >
     </footer>
+    <section
+      id="shortcuts"
+      class="shortcuts-panel"
+      popover="auto"
+      aria-labelledby="shortcuts-title"
+    >
+      <div class="shortcuts-heading">
+        <h2 id="shortcuts-title">Less clicking. More doing.</h2>
+        <button
+          class="icon-button"
+          popovertarget="shortcuts"
+          aria-label="Close shortcuts"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m6 6 12 12M6 18 18 6" />
+          </svg>
+        </button>
+      </div>
+      <p>Shortcuts stay out of your way while you’re typing in a field.</p>
+      <dl class="shortcut-tools">
+        <div>
+          <dt>Select</dt>
+          <dd><kbd>V</kbd></dd>
+        </div>
+        <div>
+          <dt>Pen</dt>
+          <dd><kbd>P</kbd></dd>
+        </div>
+        <div>
+          <dt>Highlight</dt>
+          <dd><kbd>H</kbd></dd>
+        </div>
+        <div>
+          <dt>Eraser</dt>
+          <dd><kbd>E</kbd></dd>
+        </div>
+        <div>
+          <dt>Text</dt>
+          <dd><kbd>T</kbd></dd>
+        </div>
+        <div>
+          <dt>Tick</dt>
+          <dd><kbd>K</kbd></dd>
+        </div>
+        <div>
+          <dt>Signature</dt>
+          <dd><kbd>S</kbd></dd>
+        </div>
+        <div>
+          <dt>This guide</dt>
+          <dd><kbd>?</kbd></dd>
+        </div>
+      </dl>
+      <dl class="shortcut-actions">
+        <div>
+          <dt>Undo / redo</dt>
+          <dd><kbd>⌘/Ctrl</kbd> <kbd>Z</kbd> / <kbd>⇧ Z</kbd></dd>
+        </div>
+        <div>
+          <dt>Save PDF</dt>
+          <dd><kbd>⌘/Ctrl</kbd> <kbd>S</kbd></dd>
+        </div>
+        <div>
+          <dt>Print</dt>
+          <dd><kbd>⌘/Ctrl</kbd> <kbd>P</kbd></dd>
+        </div>
+        <div>
+          <dt>Move selection</dt>
+          <dd>Arrow keys · Shift for larger steps</dd>
+        </div>
+      </dl>
+    </section>
     <input
       id="pdf-file"
       type="file"
