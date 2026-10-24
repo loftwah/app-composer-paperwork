@@ -147,7 +147,7 @@ export function writeSiteMetadata(root = process.cwd()) {
           "<!-- seo:start -->\n" +
           pageMetadata(origin, {
             ...page,
-            title: page.title.replace(/^Paperwork/, config.title),
+            title: page.title.replace(/^Paperwork/, () => config.title),
             appName: config.title,
           }) +
           "\n<!-- seo:end -->",

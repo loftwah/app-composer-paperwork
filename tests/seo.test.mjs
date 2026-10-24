@@ -63,7 +63,7 @@ test("the actual build switches a prepared instance from noindex to its own revi
   mkdirSync(join(root, "public"));
   writeFileSync(
     join(root, "public/paperwork.json"),
-    JSON.stringify({ title: "Community Paperwork" }),
+    JSON.stringify({ title: "Community Paperwork $&" }),
   );
   const reset = () => {
     for (const [file, source] of [
@@ -91,9 +91,9 @@ test("the actual build switches a prepared instance from noindex to its own revi
     inspectHead(page, {
       canonical: ownOrigin + "/",
       image: ownOrigin + sharePath,
-      siteName: "Community Paperwork",
+      siteName: "Community Paperwork $&",
     }).title,
-    "Community Paperwork — Fill, sign and edit PDFs in your browser",
+    "Community Paperwork $& — Fill, sign and edit PDFs in your browser",
   );
   assert.doesNotMatch(page, /https:\/\/paperwork\.loftwah\.com/);
   const xml = readFileSync(join(root, "dist/sitemap.xml"), "utf8");

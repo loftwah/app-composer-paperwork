@@ -83,6 +83,29 @@ try {
   );
   await page.goto(base);
   await page.locator(".press-illustration img").evaluate((img) => img.decode());
+  const publicTitle =
+    JSON.parse(readFileSync("public/paperwork.json", "utf8")).title +
+    " — Fill, sign and edit PDFs in your browser";
+  assert.equal(await page.title(), publicTitle);
+  if (existsSync("site.json")) {
+    const publicOrigin = JSON.parse(readFileSync("site.json", "utf8")).origin;
+    const metadata = await page.evaluate(() => ({
+      canonical: document.querySelector('link[rel="canonical"]').href,
+      schema: JSON.parse(
+        document.querySelector('script[type="application/ld+json"]')
+          .textContent,
+      ),
+      image: document.querySelector('meta[property="og:image"]').content,
+    }));
+    assert.equal(metadata.canonical, publicOrigin + "/");
+    assert.equal(metadata.schema.url, publicOrigin + "/");
+    assert.equal(
+      metadata.image,
+      publicOrigin + "/social/paperwork-20261024.png",
+    );
+    receipt.checks.static_and_rendered_search_sharing_metadata = "pass";
+  }
+
   assert.equal(await page.locator("#save").isVisible(), false);
   await page.screenshot({ path: output + "/welcome-desktop-dark.png" });
   await page.locator("#theme").click();
