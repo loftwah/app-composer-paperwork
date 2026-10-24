@@ -344,3 +344,54 @@ test("export refuses additions that would be clipped instead of silently losing 
     await doc.pdf.loadingTask.destroy();
   }
 });
+
+test("escaped source appearances retain native font size, colour and top-aligned multiline text", async () => {
+  const doc = await fixture(
+    "tests/fixtures/paperwork-fixtures/paperwork-lab-interactive-mixed.pdf",
+  );
+  try {
+    const initial = JSON.parse(
+      readFileSync(
+        "tests/fixtures/paperwork-fixtures/fixture-manifest.json",
+        "utf8",
+      ),
+    ).fields;
+    doc.initial.values = Object.fromEntries(
+      Object.entries(initial).map(([key, value]) => [key, value.initial]),
+    );
+    const comments = "First line of a fictional note.\nSecond line after edit.";
+    const saved = await PDFDocument.load(
+      await exportDocument(doc, {
+        values: {
+          ...doc.initial.values,
+          comments,
+          document_type: ["Follow-up"],
+        },
+        additions: [],
+      }),
+    );
+    const form = saved.getForm();
+    assert.equal(form.getTextField("comments").getText(), comments);
+    assert.match(
+      form.getTextField("comments").acroField.getDefaultAppearance(),
+      /\s11 Tf/,
+    );
+    assert.match(
+      form.getDropdown("document_type").acroField.getDefaultAppearance(),
+      /\s10 Tf/,
+    );
+    const { decodePDFRawStream } = await import("pdf-lib");
+    const widget = form.getTextField("comments").acroField.getWidgets()[0];
+    const appearance = new TextDecoder().decode(
+      decodePDFRawStream(widget.getAppearances().normal).decode(),
+    );
+    assert.match(appearance, /0\.082353 0\.156863 0\.239216 rg/);
+    const baseline = Number(appearance.match(/1 0 0 1 [\d.]+ ([\d.]+) Tm/)[1]);
+    assert(
+      baseline > widget.getRectangle().height - 25,
+      "the first line starts near the top, without a line-sized blank gap",
+    );
+  } finally {
+    await doc.pdf.loadingTask.destroy();
+  }
+});
