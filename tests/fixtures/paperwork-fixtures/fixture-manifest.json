@@ -1,0 +1,193 @@
+{
+  "fixture_version": "1.0.0",
+  "synthetic_only": true,
+  "fixture": "paperwork-lab-interactive-mixed.pdf",
+  "signature": "demo-signature-transparent.png",
+  "pages": [
+    {
+      "page": 1,
+      "size": "A4 portrait",
+      "rotation": 0,
+      "kind": "AcroForm"
+    },
+    {
+      "page": 2,
+      "size": "A4 portrait",
+      "rotation": 0,
+      "kind": "mixed interactive + flat"
+    },
+    {
+      "page": 3,
+      "size": "A4 authored landscape",
+      "rotation": 90,
+      "kind": "rotated vector flat page"
+    },
+    {
+      "page": 4,
+      "size": "US Letter portrait",
+      "rotation": 0,
+      "kind": "simulated raster scan"
+    }
+  ],
+  "fields": {
+    "full_name": {
+      "type": "/Tx",
+      "initial": "Jordan Example",
+      "test_value": "Alex Example"
+    },
+    "reference_code": {
+      "type": "/Tx",
+      "initial": "LAB-0042",
+      "test_value": "LAB-0077",
+      "max_length": 12
+    },
+    "contact_email": {
+      "type": "/Tx",
+      "initial": "",
+      "test_value": "alex@example.invalid"
+    },
+    "immutable_id": {
+      "type": "/Tx",
+      "initial": "SYNTH-LOCK-001",
+      "test_value": "SYNTH-LOCK-001",
+      "read_only": true
+    },
+    "comments": {
+      "type": "/Tx",
+      "initial": "Replace this sample note.",
+      "test_value": "First line of a fictional note.\nSecond line after edit."
+    },
+    "subscribe": {
+      "type": "/Btn",
+      "initial": "/Off",
+      "test_value": "/Yes"
+    },
+    "terms_seen": {
+      "type": "/Btn",
+      "initial": "/Yes",
+      "test_value": "/Off"
+    },
+    "contact_method": {
+      "type": "/Btn",
+      "initial": "/Email",
+      "test_value": "/InPerson"
+    },
+    "delivery_window": {
+      "type": "/Ch",
+      "initial": "Afternoon",
+      "test_value": "Evening"
+    },
+    "document_type": {
+      "type": "/Ch",
+      "initial": "Request",
+      "test_value": "Follow-up"
+    },
+    "case_note": {
+      "type": "/Tx",
+      "initial": "Editable even after drawing",
+      "test_value": "Still editable after pen and signature"
+    }
+  },
+  "page2_overlay_targets": [
+    {
+      "id": "overlay_text",
+      "pdf_bbox": [
+        38,
+        425,
+        245,
+        95
+      ]
+    },
+    {
+      "id": "overlay_tick",
+      "pdf_bbox": [
+        311,
+        425,
+        242,
+        95
+      ]
+    },
+    {
+      "id": "pen_zone",
+      "pdf_bbox": [
+        38,
+        291,
+        245,
+        109
+      ]
+    },
+    {
+      "id": "highlighter_zone",
+      "pdf_bbox": [
+        311,
+        291,
+        242,
+        109
+      ]
+    },
+    {
+      "id": "signature_zone",
+      "pdf_bbox": [
+        38,
+        132,
+        515,
+        133
+      ]
+    }
+  ],
+  "test_cases": [
+    {
+      "id": "fields-roundtrip",
+      "page": 1,
+      "actions": "Edit all editable native fields, toggle checks twice, change radio, dropdown and list twice; export and reopen.",
+      "assert": "All expected AcroForm /V values AND appearances survive in PDF.js and independent viewer. Read-only ID unchanged."
+    },
+    {
+      "id": "mixed-edits",
+      "page": 2,
+      "actions": "Edit case_note, draw strokes, erase one, undo/redo, add/move text and tick, import demo-signature-transparent.png, resize and move.",
+      "assert": "No native value or overlay disappears on tool/page switches; exported appearance matches editor."
+    },
+    {
+      "id": "rotated-coordinates",
+      "page": 3,
+      "actions": "At rotated 90-degree page, place three X strokes and text at labelled targets, zoom, export.",
+      "assert": "All are at intended displayed locations with no mirrored or shifted stroke/signature geometry."
+    },
+    {
+      "id": "raster-overlays",
+      "page": 4,
+      "actions": "Fill apparent printed boxes using overlay tools; select/correct and export.",
+      "assert": "Raster background remains intact; additions survive independent PDF viewer."
+    },
+    {
+      "id": "privacy-network",
+      "page": "all",
+      "actions": "With browser Network recording, open sample, draw, import PNG, save and print.",
+      "assert": "No document/signature bytes transmitted or silently persisted. Host may load ordinary app assets."
+    },
+    {
+      "id": "negative-encrypted",
+      "file": "negative-password-protected.pdf",
+      "actions": "Open with no password.",
+      "assert": "Clear unsupported/password notice; no blank export falsely reported as complete."
+    },
+    {
+      "id": "negative-truncated",
+      "file": "negative-truncated.pdf",
+      "actions": "Open corrupted file.",
+      "assert": "Clear load error; existing unrelated unsaved document work preserved."
+    },
+    {
+      "id": "print-completed",
+      "page": "all",
+      "actions": "Print from editor after edits.",
+      "assert": "Print preview uses completed PDF. Saved or printed PDF agrees with independent viewer."
+    }
+  ],
+  "limits": [
+    "Not a genuine XFA fixture; genuine samples need separate vetted test documents.",
+    "Does not test live personal data or legally meaningful signatures.",
+    "Browser interaction success is not proof of PDF interoperability."
+  ]
+}
