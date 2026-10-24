@@ -1,0 +1,13 @@
+{
+  "full_name": "Alex Example",
+  "reference_code": "LAB-0077",
+  "contact_email": "alex@example.invalid",
+  "immutable_id": "SYNTH-LOCK-001",
+  "comments": "First line of a fictional note.\nSecond line after edit.",
+  "subscribe": "/Yes",
+  "terms_seen": "/Off",
+  "contact_method": "/InPerson",
+  "delivery_window": "Evening",
+  "document_type": "Follow-up",
+  "case_note": "Still editable after pen and signature"
+}

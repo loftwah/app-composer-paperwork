@@ -1,0 +1,1 @@
+{"contract":1,"id":"paperwork","repository":"https://github.com/loftwah/app-composer-paperwork","runtime":"static-assets","dataVersion":1,"capabilities":[],"routes":["/paperwork"],"configuration":{"title":{"type":"string","maxLength":80},"intro":{"type":"string","maxLength":240},"theme":{"type":"select","options":["daylight","midnight"]}}}

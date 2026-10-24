@@ -1,0 +1,8 @@
+{
+  "fixture-manifest.json": "7cbbd03aa675c1aac9e8ff5b2c1b123e6c97a31d86f9aeca30f64d14f4477242",
+  "expected-fields-example.json": "12cd1a883d895f49010f7c2a7241e2bfcc34d3d13437cbd9068f19e5c33d5db4",
+  "demo-signature-transparent.png": "9557f82954c8bbcf99b20cae3180ab4f9d010a4f1c5025c29e0cc4fdcc9462bb",
+  "negative-truncated.pdf": "bbc48a9ec267d826853baee6ae3301b98df228c23403ed10e35a8f7733c4fe97",
+  "paperwork-lab-interactive-mixed.pdf": "f2fc329a1cbeb3d64302d77120da7d302c6b9e940ce6e9ac5893920ab9cf8142",
+  "negative-password-protected.pdf": "076c2a0ff2fc9f08e0e3be884f1c1e55e7cc17ee8bb93f696324566852cfa32a"
+}
