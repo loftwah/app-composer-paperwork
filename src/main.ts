@@ -36,6 +36,36 @@ const status = (text: string, error = false) => {
   $("status").textContent = text;
   $("status").classList.toggle("error", error);
 };
+function syncChrome() {
+  document.body.classList.toggle("has-document", !!doc);
+  for (const id of ["open", "start-open", "sample"]) button(id).disabled = busy;
+  button("save").disabled = button("print").disabled = !doc || busy;
+  button("save").textContent = busy && doc ? "Preparing…" : "Save PDF";
+  const kind = busy
+    ? "preparing"
+    : dirty
+      ? "changed"
+      : lastSaved
+        ? "exported"
+        : "ready";
+  const label = busy
+    ? "Preparing PDF…"
+    : dirty
+      ? "Unsaved changes"
+      : lastSaved
+        ? "Exported"
+        : "Ready to edit";
+  const indicator = $("document-state");
+  indicator.dataset.state = kind;
+  const text = indicator.querySelector("span")!;
+  if (text.textContent !== label) text.textContent = label;
+}
+function hasUnexportedEdits() {
+  return (
+    !!doc &&
+    JSON.stringify(state) !== (lastSaved || JSON.stringify(doc.initial))
+  );
+}
 function remember(snapshot = state) {
   history.push(clone(snapshot));
   if (history.length > 45) history.shift();
@@ -45,19 +75,24 @@ function remember(snapshot = state) {
   updateHistory();
 }
 function updateHistory() {
+  const pendingField = !!fieldStart && dirty;
   for (const id of ["undo", "undo-mobile"]) {
     const el = document.getElementById(id) as HTMLButtonElement | null;
-    if (el) el.disabled = !history.length;
+    if (el) el.disabled = !history.length && !pendingField;
   }
   for (const id of ["redo", "redo-mobile"]) {
     const el = document.getElementById(id) as HTMLButtonElement | null;
-    if (el) el.disabled = !future.length;
+    if (el) el.disabled = !future.length || pendingField;
   }
 }
 function settleField() {
+  if (!fieldStart) return;
   if (fieldStart && JSON.stringify(fieldStart) !== JSON.stringify(state))
     remember(fieldStart);
   fieldStart = undefined;
+  dirty = hasUnexportedEdits();
+  syncChrome();
+  updateHistory();
 }
 function requestOpen(action: () => void) {
   settleField();
@@ -111,6 +146,7 @@ async function loadFile(file: File) {
 async function load(bytes: Uint8Array, name: string) {
   if (busy) return;
   busy = true;
+  syncChrome();
   status("Opening your PDF…");
   try {
     const next = await openDocument(bytes, name);
@@ -128,6 +164,7 @@ async function load(bytes: Uint8Array, name: string) {
     $("welcome").hidden = true;
     $("editor").hidden = false;
     $("filename").textContent = name;
+    $("filename").title = name;
     button("save").disabled = false;
     button("print").disabled = false;
     button("reuse").hidden = true;
@@ -153,6 +190,7 @@ async function load(bytes: Uint8Array, name: string) {
     );
   } finally {
     busy = false;
+    syncChrome();
   }
 }
 function fit() {
@@ -322,6 +360,7 @@ function renderFields() {
       else state.values[widget.fieldName] = input.value;
       dirty = true;
       revokeOutput();
+      updateHistory();
       if (widget.radioButton || widget.checkBox)
         for (const peer of layer.querySelectorAll<HTMLInputElement>("input"))
           if (peer !== input && peer.dataset.field === widget.fieldName)
@@ -464,17 +503,31 @@ function drawAdditions(draft?: Addition) {
           "stroke-dasharray": `${4 / zoom}`,
         }),
       );
-      const handleSize = 20 / zoom,
-        handle = el("rect", {
-          x: item.x + item.w - handleSize / 2,
-          y: item.y + item.h - handleSize / 2,
-          width: handleSize,
-          height: handleSize,
+      const handleSize = 16 / zoom,
+        hitSize = (item.kind === "image" ? 44 : 24) / zoom,
+        handle = el("g", {
           class: "handle",
           role: "button",
           tabindex: 0,
           "aria-label": "Resize selected addition. Use plus and minus keys.",
         });
+      handle.append(
+        el("rect", {
+          x: item.x + item.w - hitSize / 2,
+          y: item.y + item.h - hitSize / 2,
+          width: hitSize,
+          height: hitSize,
+          fill: "transparent",
+          stroke: "none",
+        }),
+        el("rect", {
+          x: item.x + item.w - handleSize / 2,
+          y: item.y + item.h - handleSize / 2,
+          width: handleSize,
+          height: handleSize,
+          rx: 2 / zoom,
+        }),
+      );
       handle.onpointerdown = (e) => beginMove(e, item, true);
       handle.onkeydown = (e) => objectKey(e, item);
       svg.append(handle);
@@ -897,7 +950,7 @@ function undo() {
   if (!previous) return;
   future.push(clone(state));
   state = previous;
-  dirty = true;
+  dirty = hasUnexportedEdits();
   revokeOutput();
   selected = "";
   renderFields();
@@ -906,11 +959,12 @@ function undo() {
   updateHistory();
 }
 function redo() {
+  settleField();
   const next = future.pop();
   if (!next) return;
   history.push(clone(state));
   state = next;
-  dirty = true;
+  dirty = hasUnexportedEdits();
   revokeOutput();
   selected = "";
   renderFields();
@@ -1006,12 +1060,14 @@ function revokeOutput() {
   }
   document.getElementById("print-frame")?.remove();
   document.getElementById("print-fallback")?.remove();
+  syncChrome();
 }
 async function save(print = false) {
   if (!doc || busy) return;
   (document.activeElement as HTMLElement)?.blur();
   settleField();
   busy = true;
+  syncChrome();
   button("save").disabled = button("print").disabled = true;
   status(
     print
@@ -1065,7 +1121,7 @@ async function save(print = false) {
       a.click();
       lastSaved = JSON.stringify(snapshot);
       dirty = JSON.stringify(state) !== lastSaved;
-      status("Completed PDF downloaded. You can keep editing here.");
+      status("PDF downloaded. You can keep editing here.");
     }
   } catch (e) {
     revokeOutput();
@@ -1078,6 +1134,7 @@ async function save(print = false) {
   } finally {
     busy = false;
     button("save").disabled = button("print").disabled = false;
+    syncChrome();
   }
 }
 button("save").onclick = () => {
@@ -1105,6 +1162,17 @@ window.addEventListener("keydown", (event) => {
     return;
   const target = event.target as HTMLElement,
     editing = /INPUT|TEXTAREA|SELECT/.test(target.tagName);
+  const shortcuts = $("shortcuts");
+  if (event.key === "?" && !editing && !event.ctrlKey && !event.metaKey) {
+    event.preventDefault();
+    shortcuts.togglePopover();
+    return;
+  }
+  if (
+    shortcuts.matches(":popover-open") &&
+    (event.key === "Escape" || shortcuts.contains(target))
+  )
+    return;
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
     event.preventDefault();
     void save();
@@ -1180,8 +1248,10 @@ async function boot() {
     const text = await response.text();
     if (text.length > 2048) throw Error("configuration too large");
     const config = validateConfiguration(JSON.parse(text));
-    const mark = document.querySelector(".wordmark")!;
-    mark.lastChild!.textContent = config.title;
+    const mark = document.querySelector<HTMLAnchorElement>(".wordmark")!;
+    $("app-title").textContent = config.title;
+    mark.title = config.title;
+    mark.setAttribute("aria-label", `${config.title} home`);
     document.title = config.title + " — Fill, draw, sign, done.";
     document.querySelector(".start > p")!.textContent = config.intro;
     document.documentElement.dataset.theme =

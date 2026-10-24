@@ -82,6 +82,25 @@ try {
     requests.push({ url: r.url(), method: r.method(), body: r.postData() }),
   );
   await page.goto(base);
+  await page.locator(".press-illustration img").evaluate((img) => img.decode());
+  assert.equal(await page.locator("#save").isVisible(), false);
+  await page.screenshot({ path: output + "/welcome-desktop-dark.png" });
+  await page.locator("#theme").click();
+  await page.screenshot({ path: output + "/welcome-desktop-light.png" });
+  await page.locator("#theme").click();
+  await page.locator(".shortcuts-trigger").click();
+  assert(
+    await page
+      .locator("#shortcuts")
+      .evaluate((node) => node.matches(":popover-open")),
+  );
+  await page.keyboard.press("Escape");
+  assert.equal(
+    await page
+      .locator("#shortcuts")
+      .evaluate((node) => node.matches(":popover-open")),
+    false,
+  );
   await page.locator("#pdf-file").setInputFiles(file);
   const ready = async (n) =>
     page.waitForFunction(
@@ -91,6 +110,26 @@ try {
       n,
     );
   await ready(0);
+  await page.waitForFunction(
+    () => document.querySelector("#document-state").dataset.state === "ready",
+  );
+  await page.locator('[data-field="full_name"]').fill("Temporary polish check");
+  assert.equal(
+    await page.locator("#document-state").getAttribute("data-state"),
+    "changed",
+  );
+  assert(await page.locator("#undo").isEnabled());
+  await page.locator("#undo").click();
+  assert.equal(
+    await page.locator("#document-state").getAttribute("data-state"),
+    "ready",
+  );
+  await page.locator("#redo").click();
+  assert.equal(
+    await page.locator("#document-state").getAttribute("data-state"),
+    "changed",
+  );
+  await page.locator("#undo").click();
   await page.screenshot({ path: output + "/desktop-fields.png" });
   assert(await page.locator('[data-field="immutable_id"]').isDisabled());
   assert.equal(
@@ -317,6 +356,18 @@ try {
     .update(completedBytes)
     .digest("hex");
   receipt.checks.field_and_mixed_browser_journey = "pass";
+  assert.equal(
+    await page.locator("#document-state").getAttribute("data-state"),
+    "exported",
+  );
+  receipt.checks.document_edit_export_state_and_pending_field_undo = "pass";
+  await page.setViewportSize({ width: 1440, height: 1100 });
+  for (let i = 0; i < 3; i++) {
+    await page.locator("#zoom-out").click();
+    await ready(1);
+  }
+  await page.screenshot({ path: output + "/editor-overview.png" });
+  await page.setViewportSize({ width: 1440, height: 1000 });
   // Print must receive an independently generated *completed* PDF with identical document bytes.
   await page.locator("#print").click();
   await page.locator("#print-frame").waitFor({ state: "attached" });
@@ -433,6 +484,19 @@ try {
   });
   const phone = await mobileContext.newPage();
   await phone.goto(base);
+  await phone
+    .locator(".press-illustration img")
+    .evaluate((img) => img.decode());
+  await phone.screenshot({
+    path: output + "/welcome-phone-dark.png",
+    fullPage: true,
+  });
+  await phone.locator("#theme").tap();
+  await phone.screenshot({
+    path: output + "/welcome-phone-light.png",
+    fullPage: true,
+  });
+  await phone.locator("#theme").tap();
   await phone.locator("#pdf-file").setInputFiles(file);
   await phone.waitForFunction(
     () => document.querySelector("#page").getAttribute("aria-busy") === "false",
@@ -442,6 +506,11 @@ try {
       () => document.documentElement.scrollWidth > innerWidth,
     ),
     false,
+  );
+  assert(await phone.locator("#filename").isVisible());
+  assert.equal(
+    await phone.locator("#filename").getAttribute("title"),
+    "paperwork-lab-interactive-mixed.pdf",
   );
   await phone.locator('[data-field="full_name"]').fill("Phone Example");
   await phone.locator("#page-number").selectOption({ value: "1" });
