@@ -65,6 +65,7 @@
         { name: "Carry / forward", href: "https://ai.loftwah.com/", image: "apps/carryforward-small-20261018.webp", description: "Portable assistant memory", keywords: "carry forward ai fictional memory encrypted vault" },
         { name: "Launch Kit", href: "https://composer-launch-kit.loftwah.workers.dev/", image: "apps/launch-kit-20261023-32.png", standaloneOnly: true, explainer: "/launch-kit", description: "Profile cards, icons and launch assets", keywords: "profile card branding icon social image png artwork design" },
         { name: "Paperwork", href: "https://composer-paperwork.loftwah.workers.dev/", image: "apps/paperwork-icon-20261024.svg", standaloneOnly: true, explainer: "/paperwork", description: "Fill, draw, sign and print a PDF locally", keywords: "pdf form paperwork document signature ink pen fill print" },
+        { name: "LDraw", href: "https://ldraw.loftwah.com/", image: "apps/ldraw-tile-c9c2339a1296-d2e0dc4b-r2-96.webp", standaloneOnly: true, explainer: "/ldraw", description: "Editable diagrams, PNG and SVG", keywords: "draw drawing diagram excalidraw scene png svg local offline" },
     ];
     const taskIcons = {
         terminal: ["M4 5h16v14H4z", "M8 9l3 3-3 3M13 15h3"],

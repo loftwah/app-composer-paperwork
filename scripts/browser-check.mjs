@@ -24,6 +24,7 @@ const types = {
   ".wasm": "application/wasm",
   ".svg": "image/svg+xml",
   ".png": "image/png",
+  ".webp": "image/webp",
   ".pdf": "application/pdf",
   ".bcmap": "application/octet-stream",
   ".json": "application/json",
@@ -55,6 +56,103 @@ const base =
   process.env.PAPERWORK_ORIGIN || `http://127.0.0.1:${server.address().port}`;
 const browsers = [];
 let activePage;
+// The local launcher is app-owned markup plus a reviewed shared controller. Check
+// the actual Apps menu on the real page: one searched LDraw result, its local
+// tile, its destination and the documented keyboard paths, without navigating.
+async function checkLdrawAppsMenu(page, label, open) {
+  const dialog = page.locator("#app-navigation");
+  const search = dialog.locator('input[type="search"]');
+  await open();
+  assert.equal(
+    await dialog.evaluate((el) => el.open),
+    true,
+    label + ": the Apps menu opens",
+  );
+  await search.fill("LDraw");
+  const rows = dialog.locator(
+    '[data-destination][data-launcher-group="apps"]:not([hidden])',
+  );
+  assert.equal(
+    await rows.count(),
+    1,
+    label + ": searching LDraw returns exactly one app row",
+  );
+  const row = rows.first();
+  const link = row.locator("a");
+  assert.equal(
+    await link.getAttribute("href"),
+    "https://ldraw.loftwah.com/",
+    label + ": LDraw links to its own application",
+  );
+  const tile = row.locator("img");
+  assert.equal(
+    await tile.getAttribute("src"),
+    "/brand/apps/ldraw-tile-c9c2339a1296-d2e0dc4b-r2-96.webp",
+    label + ": the local tile is used",
+  );
+  assert.equal(await tile.getAttribute("alt"), "");
+  await page.waitForFunction(
+    () =>
+      [
+        ...document.querySelectorAll(
+          '#app-navigation [data-destination] img[src$="ldraw-tile-c9c2339a1296-d2e0dc4b-r2-96.webp"]',
+        ),
+      ].some((img) => img.complete && img.naturalWidth > 0),
+    null,
+    { timeout: 10000 },
+  );
+  const decoded = await tile.evaluate((img) => ({
+    width: img.naturalWidth,
+    height: img.naturalHeight,
+  }));
+  assert.ok(
+    decoded.width > 0 && decoded.height > 0,
+    label + ": the tile decodes",
+  );
+  assert.equal(
+    (await dialog.locator('[role="status"]').textContent()).trim(),
+    "1 destination",
+  );
+  // Arrow keys select the visible result; ordinary typing returns to search.
+  await dialog.locator("[data-close-apps]").focus();
+  await page.keyboard.press("ArrowDown");
+  assert.equal(
+    await row.evaluate((el) => el.dataset.active),
+    "true",
+    label + ": ArrowDown selects the LDraw row",
+  );
+  await page.keyboard.press("l");
+  assert.equal(
+    await search.evaluate((el) => el === document.activeElement),
+    true,
+    label + ": typing after arrow selection returns to search",
+  );
+  await search.fill("LDraw");
+  assert.equal(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+    true,
+    label + ": the open menu does not overflow horizontally",
+  );
+  const screenshot = output + "/apps-menu-" + label + ".png";
+  await page.screenshot({ path: screenshot });
+  await page.keyboard.press("Escape");
+  assert.equal(
+    await dialog.evaluate((el) => el.open),
+    false,
+    label + ": Escape closes a nonempty search",
+  );
+  return {
+    search: "LDraw",
+    visible_app_rows: 1,
+    status: "1 destination",
+    href: "https://ldraw.loftwah.com/",
+    tile: decoded,
+    keyboard: "ArrowDown selects, typing returns to search, Escape closes",
+    screenshot: path.basename(screenshot),
+  };
+}
 const receipt = {
   source_sha: execFileSync("git", ["rev-parse", "HEAD"], {
     encoding: "utf8",
@@ -148,6 +246,11 @@ try {
   assert.equal(await page.locator("#page").getAttribute("data-tool"), "pen");
   await page.locator('button[data-tool="select"]').click();
   receipt.checks.compact_desktop_document_space = desktopSpace;
+  receipt.checks.apps_menu_ldraw_desktop = await checkLdrawAppsMenu(
+    page,
+    "desktop",
+    () => page.locator("[data-open-apps]").click(),
+  );
 
   await page.waitForFunction(
     () => document.querySelector("#document-state").dataset.state === "ready",
@@ -781,6 +884,20 @@ try {
     await phone
       .locator("#more-actions")
       .evaluate((el) => el === document.activeElement),
+  );
+  receipt.checks.apps_menu_ldraw_phone = await checkLdrawAppsMenu(
+    phone,
+    "phone",
+    async () => {
+      await phone.locator("#more-actions").tap();
+      await phone.locator("[data-open-apps]").tap();
+    },
+  );
+  assert(
+    await phone
+      .locator("#more-actions")
+      .evaluate((el) => el === document.activeElement),
+    "Escape returns compact focus to the menu trigger",
   );
   receipt.checks.compact_phone_document_space = { phoneSpace, shortSpace };
   assert(await phone.locator("#filename").isVisible());
