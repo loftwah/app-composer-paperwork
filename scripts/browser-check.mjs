@@ -165,7 +165,12 @@ const receipt = {
   ],
 };
 try {
-  const browser = await chromium.launch({ headless: true, channel: "chrome" });
+  const browser = await chromium.launch({
+    headless: true,
+    ...(process.env.PLAYWRIGHT_CHROMIUM
+      ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM }
+      : { channel: "chrome" }),
+  });
   browsers.push(browser);
   receipt.browser = browser.version();
   const context = await browser.newContext({
@@ -241,6 +246,8 @@ try {
   assert.equal(await page.locator(".context-bar").isVisible(), false);
   assert.equal(await page.locator("footer").isVisible(), false);
   await page.locator('button[data-tool="pen"]').click();
+  assert.equal(await page.locator(".context-bar").isVisible(), true);
+  assert.equal(await page.locator("#active-tool").textContent(), "Pen");
   await page.locator("#more-actions").click();
   await page.keyboard.press("Escape");
   assert.equal(await page.locator("#page").getAttribute("data-tool"), "pen");
@@ -289,7 +296,82 @@ try {
     await page.locator('[data-field="full_name"]').inputValue(),
     originalName,
   );
+  // Inline clear is discoverable without opening More, and stays undoable.
+  await page.locator('[data-field="contact_email"]').focus();
+  assert(await page.locator("#clear-field-inline").isVisible());
+  await page.locator("[data-field=contact_email]").fill("Not the final answer");
+  await page.locator("#clear-field-inline").click();
+  assert.equal(
+    await page.locator('[data-field="contact_email"]').inputValue(),
+    "",
+  );
+  await page.locator("#undo").click();
   await page.screenshot({ path: output + "/desktop-fields.png" });
+
+  // Text stays active across several entries; Done does not switch tools.
+  await page.locator('button[data-tool="text"]').click();
+  const textPoint = await coords(245, 400);
+  await page.mouse.move(textPoint.x, textPoint.y);
+  assert((await page.locator("#tool-preview *").count()) > 0);
+  await tap(245, 400);
+  await page.locator("#text-content").fill("First sticky note");
+  await page.locator("#finish-text").click();
+  assert.equal(await page.locator("#page").getAttribute("data-tool"), "text");
+  assert.equal(await page.locator("#active-tool").textContent(), "Text");
+  await tap(245, 430);
+  await page.locator("#text-content").fill("Second sticky note");
+  await page.locator("#finish-text").click();
+  assert.equal(
+    await page.locator('#additions [data-kind="text"]').count(),
+    2,
+  );
+  await page.locator("#undo").click();
+  await page.locator("#undo").click();
+  assert.equal(
+    await page.locator('#additions [data-kind="text"]').count(),
+    0,
+  );
+  await page.locator('button[data-tool="select"]').click();
+
+  // Tick preview uses the exact committed geometry.
+  await page.locator('button[data-tool="tick"]').click();
+  const tickPoint = await coords(430, 390);
+  await page.mouse.move(tickPoint.x, tickPoint.y);
+  const previewTick = await page
+    .locator("#tool-preview polyline")
+    .getAttribute("points");
+  await page.mouse.down();
+  await page.mouse.up();
+  const committedTick = await page
+    .locator('#additions [data-kind="tick"] polyline')
+    .last()
+    .getAttribute("points");
+  assert.equal(previewTick, committedTick);
+  await page.locator("#undo").click();
+  await page.locator('button[data-tool="select"]').click();
+
+  // A drag creates a true circle and leaves Circle active for the next one.
+  await page.locator('button[data-tool="circle"]').click();
+  const circleStart = await coords(320, 460),
+    circleEnd = await coords(420, 545);
+  await page.mouse.move(circleStart.x, circleStart.y);
+  await page.mouse.down();
+  await page.mouse.move(circleEnd.x, circleEnd.y, { steps: 8 });
+  await page.mouse.up();
+  assert.equal(
+    await page.locator('#additions [data-kind="circle"]').count(),
+    1,
+  );
+  assert.equal(
+    await page.locator("#page").getAttribute("data-tool"),
+    "circle",
+  );
+  assert.equal(
+    await page.locator("#active-tool").textContent(),
+    "Circle",
+  );
+  await page.locator('button[data-tool="select"]').click();
+  receipt.checks.sticky_tools_preview_circle_and_clear_field = "pass";
   assert(await page.locator('[data-field="immutable_id"]').isDisabled());
   assert.equal(
     await page
@@ -336,6 +418,19 @@ try {
     await ready(n);
   };
   await go(1);
+  await page.locator("#zoom-in").click();
+  await ready(1);
+  const manualZoom = await page.locator("#zoom-label").textContent();
+  await go(2);
+  assert.equal(
+    await page.locator("#zoom-label").textContent(),
+    manualZoom,
+    "Manual zoom should survive a page change",
+  );
+  await page.locator("#fit").click();
+  await ready(2);
+  await go(1);
+  receipt.checks.zoom_persists_between_pages = "pass";
   await page.locator('[data-field="case_note"]').fill("Before the pen");
   async function coords(x, y) {
     await page.locator("#workspace").evaluate((el, y) => {
@@ -403,16 +498,59 @@ try {
   await text(60, 380, "Fictional note, corrected.");
   await page.locator('button[data-tool="tick"]').click();
   await tap(335, 385);
+  await page.locator('button[data-tool="select"]').click();
+  await page.locator('#additions [data-kind="text"]').last().click();
+  const textSelection = JSON.parse(
+    await page
+      .locator("#additions .selection-outline")
+      .getAttribute("data-page-space"),
+  );
+  assert(
+    textSelection.w < 188,
+    "Text selection should hug the rendered words, not the 190pt layout box",
+  );
+  await page.locator('#additions [data-kind="tick"]').click();
+  const tickSelection = JSON.parse(
+    await page
+      .locator("#additions .selection-outline")
+      .getAttribute("data-page-space"),
+  );
+  assert(
+    tickSelection.w < 40,
+    "Tick selection should hug the painted mark",
+  );
+  receipt.checks.tight_selection_bounds = "pass";
   await page
     .locator("#signature-file")
     .setInputFiles(fixture + "/demo-signature-transparent.png");
   await page.waitForFunction(
     () => document.querySelector("#page").dataset.tool === "image",
   );
+  assert.equal(await page.locator("#signature-list li").count(), 1);
   await tap(80, 640);
+  await page.locator("#add-signature").click();
+  await page
+    .locator("#signature-file")
+    .setInputFiles("public/examples/fictional-signature.png");
+  await page.waitForFunction(
+    () => document.querySelectorAll("#signature-list li").length === 2,
+  );
+  assert.equal(await page.locator("#signature-list li").count(), 2);
+  await page.locator(".stamp-option").first().click();
+  await tap(300, 690);
+  await page.locator(".stamp-remove").first().click();
+  assert.equal(await page.locator("#signature-list li").count(), 1);
+  assert.equal(
+    await page.locator('#additions [data-kind="image"]').count(),
+    2,
+    "Removing a tray stamp must not remove placed copies",
+  );
+  receipt.checks.multi_signature_tray_and_remove = "pass";
+  await page.locator('button[data-tool="select"]').click();
   let signature = page
     .locator("#additions [data-object]")
-    .filter({ has: page.locator("image") });
+    .filter({ has: page.locator("image") })
+    .first();
   await signature.scrollIntoViewIfNeeded();
   let box = await signature.boundingBox();
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -434,11 +572,21 @@ try {
     { steps: 10 },
   );
   await page.mouse.up();
+  const imageSelection = JSON.parse(
+    await page
+      .locator("#additions .selection-outline")
+      .getAttribute("data-page-space"),
+  );
+  assert(
+    Math.abs(imageSelection.w / imageSelection.h - 3.3693) < 0.03,
+    "Signature selection and resizing should follow the visible alpha bounds",
+  );
+  receipt.checks.signature_alpha_bounds_and_proportional_resize = "pass";
   await page.locator('[data-field="case_note"]').fill(expected.case_note);
   await page.locator('[data-field="case_note"]').press("Tab");
   await page.screenshot({ path: output + "/desktop-mixed.png" });
   const mixedObjects = await page.locator("#additions [data-object]").count();
-  assert.equal(mixedObjects, 5);
+  assert.equal(mixedObjects, 6);
   await go(2);
   // Authored page-space target centres transformed to its displayed 90-degree coordinates.
   for (const [x, y] of [
@@ -472,8 +620,9 @@ try {
     [350, 312],
     [310, 295],
   ]);
-  await page.locator("#more-actions").click();
-  await page.locator("#reuse").click();
+  // The chosen stamp stays active after one copy; Select had resized the
+  // previous copy, so reopen the in-memory tray for this page.
+  await page.locator("#signature").click();
   await tap(175, 560);
   await page.screenshot({ path: output + "/desktop-scan.png" });
   await go(0);
@@ -518,7 +667,7 @@ try {
   receipt.checks.field_and_mixed_browser_journey = "pass";
   assert.equal(
     await page.locator("#document-state").getAttribute("data-state"),
-    "exported",
+    "downloaded",
   );
   receipt.checks.document_edit_export_state_and_pending_field_undo = "pass";
   await page.setViewportSize({ width: 1440, height: 1100 });
@@ -546,8 +695,17 @@ try {
     receipt.downloaded_pdf_sha256,
   );
   receipt.checks.print_uses_completed_pdf = "pass";
+  assert.equal(
+    await page.locator("#document-state").getAttribute("data-state"),
+    "print",
+  );
+  assert.equal(await page.locator("#print-fallback").isVisible(), true);
   await page.locator('[data-field="case_note"]').fill("A later correction");
   assert.equal(await page.locator("#print-fallback").count(), 0);
+  assert.equal(
+    await page.locator("#document-state").getAttribute("data-state"),
+    "changed",
+  );
   await page.locator('[data-field="case_note"]').fill(expected.case_note);
   receipt.checks.stale_print_copy_removed_after_edit = "pass";
   // Mutate a real field during the asynchronous export, before it can publish a blob.
@@ -706,7 +864,7 @@ try {
   await page.locator("#cancel-properties").click();
   assert.equal(
     (await page.locator("#document-state span").textContent()).trim(),
-    "Ready to edit",
+    "Ready",
   );
   await openProperties(page);
   assert.equal(
@@ -724,7 +882,9 @@ try {
   await page.screenshot({ path: output + "/properties-desktop-dark.png" });
   await page.locator('#properties-dialog button[type="submit"]').click();
   assert(
-    (await page.locator("#document-state").textContent()).includes("Unsaved"),
+    (await page.locator("#document-state").textContent()).includes(
+      "Changes not downloaded",
+    ),
   );
   assert.equal(await page.title(), publicTitle);
   const metadataDownload = page.waitForEvent("download");
@@ -826,7 +986,12 @@ try {
   assert.deepEqual(errors, []);
   writeFileSync(output + "/network.json", JSON.stringify(requests, null, 2));
   // One phone-sized WebKit journey, using real touch events for pen and browser controls.
-  const mobile = await webkit.launch({ headless: true });
+  const mobile = await webkit.launch({
+    headless: true,
+    ...(process.env.PLAYWRIGHT_WEBKIT
+      ? { executablePath: process.env.PLAYWRIGHT_WEBKIT }
+      : {}),
+  });
   browsers.push(mobile);
   const mobileContext = await mobile.newContext({
     viewport: { width: 390, height: 844 },

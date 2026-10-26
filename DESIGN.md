@@ -10,6 +10,30 @@ MP selected a punchy print shop: charcoal, canonical orange, ink marks and dry h
 
 Before opening a file, show the useful Open/Try actions rather than disabled export controls. During editing, keep the filename visible on phones and expose ready/unsaved/exported state beside it. The only authored motion is the small check drawn after export, respecting reduced motion. Native popover shortcuts stay available without leaving a document. Signature resize targets have a 44px hit area with a smaller visible grip; phone history and option controls retain reachable sizes.
 
+## Effortless placement — 26 October 2026
+
+The document stays the hero, but marking it should feel direct. Each mark tool
+shows a translucent ghost of the committed geometry under the pointer: the real
+tick path, text anchor, circle ring, brush tip or trimmed signature. The ghost
+is provisional, never exported or selectable. Mouse clicks and touch
+press-drag-release use the same clamped page geometry, so an edge or zoom does
+not move the mark after placement. Circle is a true ring, not a freehand loop.
+
+Text, Tick, Circle and Signature stay active after placement; Select, V or
+Escape exits. Done commits the current text without changing tools. Selection
+outlines hug the rendered words, painted tick/ring/ink and alpha-trimmed
+signature, while a separate finger-sized hit box preserves touch picking. Text
+wrap width is explicit, so manual multiline wrapping does not force a giant
+selection box.
+
+Signature is a compact in-memory stamp tray with multiple PNGs, real thumbnails
+and per-stamp remove. Removing a tray stamp leaves placed copies. The header
+keeps a persistent document state (Ready, Changes not downloaded, Creating PDF,
+PDF downloaded, PDF ready to print, Couldn’t finish—edits safe); tool state and
+operation feedback are separate. Errors stay until dismissed or resolved.
+Save downloads a copy; it never claims browser persistence. Print prepares the
+same completed bytes and never claims that a physical printer produced a page.
+
 ## Document space — 24 October 2026
 
 The owner's direction is to spend vertical space on the document. Loaded views use a 56px desktop header and one compact tools row where width permits. Ink options appear only for relevant tools; rare actions and editing help live in More. The welcome footer is not permanent editor chrome. Phone Open/Save and history remain directly reachable with 44px controls; Print, Apps and theme move into More. Normal hints are transient, errors remain visible, and the header keeps filename/export state. Preserve real scroll/zoom and signature gestures: a fitted page may now need zooming before it can scroll.
