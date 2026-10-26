@@ -164,8 +164,19 @@
               ><span>Tick</span>
             </button>
             <button
+              data-tool="circle"
+              aria-pressed="false"
+              title="Draw a circle (C)"
+            >
+              <svg viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="8" /></svg
+              ><span>Circle</span>
+            </button>
+            <button
               id="signature"
-              title="Import a transparent signature PNG (S)"
+              aria-expanded="false"
+              aria-controls="signature-tray"
+              title="Choose or add a signature stamp (S)"
             >
               <svg viewBox="0 0 24 24">
                 <path
@@ -174,15 +185,24 @@
               ><span>Signature</span>
             </button>
           </div>
-          <div class="context-bar">
-            <p id="tool-hint">Select a field to fill it, or choose a tool.</p>
+          <div id="context-bar" class="context-bar" hidden>
+            <div class="context-copy">
+              <span id="active-tool" class="active-tool">Select</span>
+              <span id="stamp-state" class="stamp-state" hidden
+                ><img id="stamp-thumb" alt="" /><span id="stamp-name"></span
+              ></span>
+              <p id="tool-hint">Select a field to fill it, or choose a tool.</p>
+              <p id="selection-hint" class="selection-hint" hidden></p>
+            </div>
             <div class="context-options">
-              <label id="color-label"
+              <button id="clear-field-inline" hidden>Clear field</button
+              ><label id="color-label"
                 >Ink
                 <select id="color" aria-label="Ink colour">
                   <option value="#193464">Blue</option>
                   <option value="#16191e">Black</option>
                   <option value="#b62b25">Red</option>
+                  <option value="#efb900">Yellow</option>
                 </select></label
               ><label id="size-label"
                 >Size
@@ -194,6 +214,29 @@
               ><button id="delete" hidden>Delete selected</button>
             </div>
           </div>
+          <section
+            id="signature-tray"
+            class="signature-tray"
+            aria-label="Signature stamps"
+            hidden
+          >
+            <div class="signature-tray-head">
+              <strong>Signature stamps</strong>
+              <span id="signature-count" class="signature-count"></span>
+              <button id="add-signature" type="button">Add PNG</button>
+              <button id="close-signature-tray" type="button">Close</button>
+            </div>
+            <p id="signature-empty" class="signature-empty">
+              Add a transparent PNG signature or initials. The tray stays in
+              this tab only and is never uploaded or saved.
+            </p>
+            <ul id="signature-list" class="signature-list"></ul>
+            <p class="signature-note">
+              Choose a stamp, then click the page to place copies. Select moves
+              and resizes a placed copy. Removing a stamp here never removes
+              copies already on the page.
+            </p>
+          </section>
           <div class="history">
             <button
               id="undo"
@@ -234,6 +277,14 @@
               min="6"
               max="72"
               value="14" /></label
+          ><label
+            >Wrap width
+            <input
+              id="text-width"
+              type="number"
+              min="40"
+              max="1200"
+              value="190" /></label
           ><button id="finish-text">Done</button>
         </div>
         <div id="workspace" class="workspace">
@@ -251,6 +302,11 @@
               id="additions"
               class="additions"
               aria-label="Your additions"
+            ></svg>
+            <svg
+              id="tool-preview"
+              class="tool-preview"
+              aria-hidden="true"
             ></svg>
             <div id="surface" class="surface"></div>
           </div>
@@ -309,7 +365,6 @@
     >
       <div id="compact-actions" class="compact-actions"></div>
       <button id="properties">Document properties</button>
-      <button id="reuse" hidden>Place signature again</button>
       <button id="clear-field" hidden>Clear field</button>
       <a href="/help.html" target="_blank" rel="noopener">Help &amp; privacy</a>
       <button popovertarget="shortcuts">Keyboard shortcuts</button>
@@ -431,7 +486,11 @@
           <dd><kbd>K</kbd></dd>
         </div>
         <div>
-          <dt>Signature</dt>
+          <dt>Circle</dt>
+          <dd><kbd>C</kbd></dd>
+        </div>
+        <div>
+          <dt>Signature stamps</dt>
           <dd><kbd>S</kbd></dd>
         </div>
         <div>

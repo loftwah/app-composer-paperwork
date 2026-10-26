@@ -12,6 +12,23 @@ import {
   type OpenDocument,
   type Point,
 } from "./document";
+import {
+  centeredBox,
+  circleDragBox,
+  circleRadius,
+  clampBox,
+  defaultCirclePlacement,
+  hitBounds,
+  imagePlacement,
+  inkVisualBounds,
+  resizeBox,
+  textPlacement,
+  tickPlacement,
+  tickPoints,
+  tickVisualBounds,
+  visualBounds,
+  type Rect,
+} from "./geometry.ts";
 const $ = <T extends HTMLElement = HTMLElement>(id: string) =>
   document.getElementById(id) as T;
 const button = (id: string) => $<HTMLButtonElement>(id);
@@ -22,29 +39,70 @@ let doc: OpenDocument | undefined,
   future: Snapshot[] = [];
 let pageIndex = 0,
   zoom = 1,
+  zoomMode: "fit" | "manual" = "fit",
   tool = "select",
   selected = "",
   dirty = false,
   busy = false,
+  failed = false,
+  printReady = false,
   renderGeneration = 0;
-let signature: { image: string; ratio: number } | undefined,
-  lastSaved = "",
+type SignatureStamp = {
+  id: string;
+  name: string;
+  image: string;
+  ratio: number;
+  bytes: number;
+};
+let signatures: SignatureStamp[] = [],
+  selectedSignature = "",
+  signatureTrayOpen = false,
+  previewPoint: Point | undefined;
+let lastSaved = "",
   outputUrl = "",
   pendingOpen: (() => void) | undefined;
 let fieldStart: Snapshot | undefined;
 let focusedField = "";
 let statusTimer: ReturnType<typeof setTimeout> | undefined;
-const status = (text: string, error = false) => {
-  $("status").textContent = text;
-  $("status").classList.toggle("error", error);
-  $("status").dataset.visible =
-    error || !/^\d+ pages ready\./.test(text) ? "true" : "false";
-  if (statusTimer) clearTimeout(statusTimer);
-  if (!error)
-    statusTimer = setTimeout(() => {
-      $("status").dataset.visible = "false";
-    }, 5000);
+type StatusOptions = {
+  persistent?: boolean;
+  action?: { label: string; href: string };
 };
+function status(text: string, error = false, options: StatusOptions = {}) {
+  const node = $("status");
+  node.replaceChildren(document.createTextNode(text));
+  if (options.action) {
+    const link = document.createElement("a");
+    link.href = options.action.href;
+    link.target = "_blank";
+    link.rel = "noopener";
+    link.textContent = options.action.label;
+    link.className = "status-action";
+    link.id = "print-fallback";
+    node.append(" ", link);
+  }
+  node.classList.toggle("error", error);
+  node.dataset.tone = error ? "error" : options.persistent ? "info" : "success";
+  node.dataset.visible = "true";
+  if (error) {
+    const dismiss = document.createElement("button");
+    dismiss.type = "button";
+    dismiss.className = "status-dismiss";
+    dismiss.textContent = "Dismiss";
+    dismiss.onclick = () => {
+      node.textContent = "";
+      node.dataset.tone = "";
+      node.dataset.visible = "false";
+    };
+    node.append(" ", dismiss);
+  }
+  if (statusTimer) clearTimeout(statusTimer);
+  statusTimer = undefined;
+  if (!error && !options.persistent)
+    statusTimer = setTimeout(() => {
+      if (node.dataset.tone === "success") node.dataset.visible = "false";
+    }, 8000);
+}
 const headerActions = document.querySelector<HTMLElement>(".header-actions")!;
 const documentMenu = $("document-menu");
 const propertiesDialog = $<HTMLDialogElement>("properties-dialog");
@@ -88,10 +146,11 @@ $("app-navigation").addEventListener("close", () => {
     button("more-actions").focus({ preventScroll: true });
   }
 });
-for (const id of ["reuse", "clear-field"])
-  button(id).addEventListener("click", () => documentMenu.hidePopover(), {
-    capture: true,
-  });
+button("clear-field").addEventListener(
+  "click",
+  () => documentMenu.hidePopover(),
+  { capture: true },
+);
 function syncChrome() {
   document.body.classList.toggle("has-document", !!doc);
   syncActionPlacement();
@@ -101,22 +160,65 @@ function syncChrome() {
   button("save").textContent = busy && doc ? "Preparing…" : "Save PDF";
   const kind = busy
     ? "preparing"
-    : dirty
-      ? "changed"
-      : lastSaved
-        ? "exported"
-        : "ready";
+    : failed
+      ? "failed"
+      : printReady
+        ? "print"
+        : dirty
+          ? "changed"
+          : lastSaved
+            ? "downloaded"
+            : "ready";
   const label = busy
-    ? "Preparing PDF…"
-    : dirty
-      ? "Unsaved changes"
-      : lastSaved
-        ? "Exported"
-        : "Ready to edit";
+    ? "Creating PDF…"
+    : failed
+      ? "Couldn’t finish — edits safe"
+      : printReady
+        ? "PDF ready to print"
+        : dirty
+          ? "Changes not downloaded"
+          : lastSaved
+            ? "PDF downloaded"
+            : "Ready";
   const indicator = $("document-state");
   indicator.dataset.state = kind;
   const text = indicator.querySelector("span")!;
   if (text.textContent !== label) text.textContent = label;
+  indicator.title =
+    kind === "changed"
+      ? "Your changes are still in this tab. Save PDF to download a copy."
+      : kind === "downloaded"
+        ? "A copy was downloaded. Later changes need another download."
+        : kind === "print"
+          ? "The completed PDF is prepared. A print dialog may still need your confirmation."
+          : kind === "failed"
+            ? "Your edits are still in this tab. Read the message below, then retry or save."
+            : "";
+}
+const toolNames: Record<string, string> = {
+  select: "Select",
+  pen: "Pen",
+  highlight: "Highlighter",
+  eraser: "Eraser",
+  text: "Text",
+  tick: "Tick",
+  circle: "Circle",
+  image: "Signature stamp",
+};
+function syncToolChrome() {
+  $("page").dataset.tool = tool;
+  $("context-bar").hidden = tool === "select" && !selected && !focusedField;
+  $("active-tool").textContent = toolNames[tool] || "Select";
+  for (const el of document.querySelectorAll<HTMLButtonElement>("[data-tool]"))
+    if (el.tagName === "BUTTON")
+      el.setAttribute("aria-pressed", String(el.dataset.tool === tool));
+  $("tool-hint").textContent = hints[tool] || hints.select;
+  const stamp = signatures.find((s) => s.id === selectedSignature);
+  $("stamp-state").hidden = tool !== "image" || !stamp;
+  if (stamp) {
+    $<HTMLImageElement>("stamp-thumb").src = stamp.image;
+    $("stamp-name").textContent = stamp.name;
+  }
 }
 function hasUnexportedEdits() {
   return (
@@ -327,18 +429,19 @@ async function load(bytes: Uint8Array, name: string) {
     history = [];
     future = [];
     dirty = false;
+    failed = false;
     selected = "";
-    signature = undefined;
     pageIndex = 0;
     lastSaved = "";
+    zoomMode = "fit";
     revokeOutput();
+    hidePreview();
     $("welcome").hidden = true;
     $("editor").hidden = false;
     $("filename").textContent = name;
     $("filename").title = name;
     button("save").disabled = false;
     button("print").disabled = false;
-    button("reuse").hidden = true;
     $<HTMLSelectElement>("page-number").replaceChildren(
       ...next.viewports.map((_, i) => new Option(String(i + 1), String(i))),
     );
@@ -350,7 +453,7 @@ async function load(bytes: Uint8Array, name: string) {
     await old?.pdf.loadingTask.destroy();
     status(
       next.note ||
-        `${next.viewports.length} pages ready. Fill the fields, or choose a tool to write on the page.`,
+        `${next.viewports.length} pages ready. Fill a field or choose a tool.`,
     );
   } catch (e) {
     status(
@@ -516,6 +619,8 @@ function renderFields() {
     input.onfocus = () => {
       focusedField = widget.fieldName;
       button("clear-field").hidden = !!widget.readOnly;
+      button("clear-field-inline").hidden = !!widget.readOnly;
+      button("clear-field-inline").dataset.clearField = widget.fieldName;
       if (!fieldStart) fieldStart = clone(state);
       selected = "";
       showSelection();
@@ -549,28 +654,30 @@ function renderFields() {
   }
 }
 const hints: Record<string, string> = {
-  select: "Fill a field. Select an addition to move, resize or delete it.",
-  pen: "Draw on the page. Choose Select to scroll; two fingers zoom.",
-  highlight: "Highlight with translucent ink. Choose Select to scroll.",
+  select: "Fill a field. Select an addition to move, resize or restyle it.",
+  pen: "Draw on the page. Select or Escape exits; two fingers zoom.",
+  highlight: "Highlight with translucent ink. Select or Escape exits.",
   eraser:
     "Drag across your ink to erase it. Original PDF content stays intact.",
-  text: "Tap the page to add text. Select existing text to change it.",
-  tick: "Tap the page to place a tick.",
-  image: "Tap the page to place your signature. Then drag or resize it.",
+  text: "Click the page to add text. Done keeps Text active for the next one.",
+  tick: "Click or press-drag-release to place a tick. Tick stays active.",
+  circle:
+    "Drag a clean circle, or click for a default ring. Circle stays active.",
+  image:
+    "Click or press-drag-release to stamp the chosen signature. Select to resize.",
 };
 function setTool(value: string) {
+  finishText();
   focusedField = "";
   button("clear-field").hidden = true;
+  button("clear-field-inline").hidden = true;
   settleField();
+  hidePreview();
   tool = value;
-  $("page").dataset.tool = tool;
-  for (const el of document.querySelectorAll<HTMLButtonElement>("[data-tool]"))
-    if (el.tagName === "BUTTON")
-      el.setAttribute("aria-pressed", String(el.dataset.tool === tool));
-  $("tool-hint").textContent = hints[value];
-  if (doc && !busy) status(hints[value]);
   if (value !== "select") selected = "";
+  if (value !== "image") closeSignatureTray();
   showSelection();
+  syncToolChrome();
   drawAdditions();
 }
 for (const el of document.querySelectorAll<HTMLButtonElement>(
@@ -586,6 +693,28 @@ function el<K extends keyof SVGElementTagNameMap>(
     node.setAttribute(key, String(value));
   return node;
 }
+function itemRows(item: Addition): string[] {
+  return item.kind === "text" && doc
+    ? lines(item.text || "", item.w, item.size, doc.font)
+    : [];
+}
+function itemBounds(item: Addition): Rect {
+  return visualBounds(
+    item,
+    item.kind === "text" ? itemRows(item) : undefined,
+    (text, size) => (doc ? doc.font.widthOfTextAtSize(text, size) : text.length * size * 0.5),
+  );
+}
+function textHeight(item: Addition): number {
+  return doc
+    ? Math.max(
+        item.size * 1.25,
+        lines(item.text || "", item.w, item.size, doc.font).length *
+          item.size *
+          1.25,
+      )
+    : Math.max(item.size * 1.25, 18);
+}
 function drawAdditions(draft?: Addition) {
   if (!doc) return;
   const svg = $<HTMLElement>("additions") as unknown as SVGSVGElement,
@@ -595,20 +724,36 @@ function drawAdditions(draft?: Addition) {
   for (const item of [...state.additions, ...(draft ? [draft] : [])].filter(
     (a) => a.page === pageIndex,
   )) {
+    const kindName =
+      item.kind === "image"
+        ? "Signature"
+        : item.kind === "circle"
+          ? "Circle"
+          : item.kind[0].toUpperCase() + item.kind.slice(1);
     const group = el("g", {
       "data-object": item.id,
+      "data-kind": item.kind,
       tabindex: tool === "select" ? 0 : -1,
       role: "button",
-      "aria-label": `${item.kind === "image" ? "Signature" : item.kind} addition. Arrow keys move; Delete removes.`,
+      "aria-label": `${kindName} addition. Arrow keys move; Delete removes.`,
     });
     if (item.kind === "ink") {
-      const p = item.points || [];
+      const p = item.points || [],
+        points = p.map((point) => `${point.x},${point.y}`).join(" ");
       group.append(
         el("polyline", {
-          points: p.map((p) => `${p.x},${p.y}`).join(" "),
+          points,
           stroke: item.color,
           "stroke-width": item.size,
           "stroke-opacity": item.opacity ?? 1,
+          "stroke-linecap": "round",
+          "stroke-linejoin": "round",
+          fill: "none",
+        }),
+        el("polyline", {
+          points,
+          stroke: "transparent",
+          "stroke-width": Math.max(item.size, 28 / zoom),
           "stroke-linecap": "round",
           "stroke-linejoin": "round",
           fill: "none",
@@ -623,11 +768,12 @@ function drawAdditions(draft?: Addition) {
           y: item.y,
           width: item.w,
           height: item.h,
+          preserveAspectRatio: "none",
         }),
       );
-    if (item.kind === "text") {
+    if (item.kind === "text" && item.text) {
       const text = el("text", { fill: item.color, "font-size": item.size });
-      lines(item.text || "", item.w, item.size, doc.font).forEach((line, i) => {
+      itemRows(item).forEach((line, i) => {
         const span = el("tspan", {
           x: item.x,
           y: item.y + item.size + i * item.size * 1.25,
@@ -637,64 +783,94 @@ function drawAdditions(draft?: Addition) {
       });
       group.append(text);
     }
-    if (item.kind === "tick")
+    if (item.kind === "tick") {
       group.append(
         el("polyline", {
-          points: `${item.x + item.w * 0.12},${item.y + item.h * 0.52} ${item.x + item.w * 0.4},${item.y + item.h * 0.82} ${item.x + item.w * 0.9},${item.y + item.h * 0.14}`,
+          points: tickPoints(item)
+            .map((point) => `${point.x},${point.y}`)
+            .join(" "),
           stroke: item.color,
           "stroke-width": item.size,
           fill: "none",
           "stroke-linecap": "round",
+          "stroke-linejoin": "round",
         }),
       );
-    // Transparent hit area makes text, ticks and signatures easy to pick up.
-    if (item.kind !== "ink")
+    }
+    if (item.kind === "circle") {
+      group.append(
+        el("circle", {
+          cx: item.x + item.w / 2,
+          cy: item.y + item.h / 2,
+          r: circleRadius(item),
+          fill: "none",
+          stroke: item.color,
+          "stroke-width": item.size,
+        }),
+      );
+    }
+    // The visible outline is tight. Picking uses a separate, generous box.
+    if (item.kind !== "ink") {
+      const hit = hitBounds(itemBounds(item), 44 / zoom, 5 / zoom);
       group.append(
         el("rect", {
-          x: item.x,
-          y: item.y,
-          width: item.w,
-          height: item.h,
+          x: hit.x,
+          y: hit.y,
+          width: hit.w,
+          height: hit.h,
           fill: "transparent",
           stroke: "none",
         }),
       );
+    }
     group.onpointerdown = (e) => beginMove(e, item);
     group.onkeydown = (e) => objectKey(e, item);
+    group.ondblclick = (e) => {
+      if (tool !== "select" || item.kind !== "text") return;
+      e.preventDefault();
+      selected = item.id;
+      showSelection();
+      drawAdditions();
+      $<HTMLTextAreaElement>("text-content").focus();
+    };
     svg.append(group);
     if (selected === item.id) {
-      svg.append(
-        el("rect", {
-          x: item.x - 3,
-          y: item.y - 3,
-          width: item.w + 6,
-          height: item.h + 6,
-          fill: "none",
-          stroke: "#c74400",
-          "stroke-width": 1 / zoom,
-          "stroke-dasharray": `${4 / zoom}`,
-        }),
-      );
-      const handleSize = 16 / zoom,
-        hitSize = (item.kind === "image" ? 44 : 24) / zoom,
+      const b = itemBounds(item),
+        pad = 4 / zoom,
+        handleSize = 12 / zoom,
+        hitSize = 44 / zoom,
         handle = el("g", {
           class: "handle",
           role: "button",
           tabindex: 0,
           "aria-label": "Resize selected addition. Use plus and minus keys.",
         });
+      svg.append(
+        el("rect", {
+          class: "selection-outline",
+          "data-page-space": JSON.stringify(b),
+          x: b.x - pad,
+          y: b.y - pad,
+          width: b.w + pad * 2,
+          height: b.h + pad * 2,
+          fill: "none",
+          stroke: "#c74400",
+          "stroke-width": 1 / zoom,
+          "stroke-dasharray": `${4 / zoom}`,
+        }),
+      );
       handle.append(
         el("rect", {
-          x: item.x + item.w - hitSize / 2,
-          y: item.y + item.h - hitSize / 2,
+          x: b.x + b.w - hitSize / 2,
+          y: b.y + b.h - hitSize / 2,
           width: hitSize,
           height: hitSize,
           fill: "transparent",
           stroke: "none",
         }),
         el("rect", {
-          x: item.x + item.w - handleSize / 2,
-          y: item.y + item.h - handleSize / 2,
+          x: b.x + b.w - handleSize / 2,
+          y: b.y + b.h - handleSize / 2,
           width: handleSize,
           height: handleSize,
           rx: 2 / zoom,
@@ -702,35 +878,88 @@ function drawAdditions(draft?: Addition) {
       );
       handle.onpointerdown = (e) => beginMove(e, item, true);
       handle.onkeydown = (e) => objectKey(e, item);
-      svg.append(handle);
+      if (item.kind !== "text") svg.append(handle);
     }
   }
+  drawPreview();
 }
 function showSelection() {
-  $("color-label").hidden = !["pen", "highlight", "text", "tick"].includes(
-    tool,
+  const item = state.additions.find((a) => a.id === selected),
+    styleable =
+      !!item &&
+      item.kind !== "image" &&
+      item.kind !== "text",
+    textColor = item?.kind === "text";
+  $("color-label").hidden = !(
+    ["pen", "highlight", "tick", "circle"].includes(tool) ||
+    styleable ||
+    textColor
   );
-  $("size-label").hidden = !["pen", "highlight", "tick"].includes(tool);
-  const item = state.additions.find((a) => a.id === selected);
+  $("size-label").hidden = !(
+    ["pen", "highlight", "tick", "circle"].includes(tool) || styleable
+  );
   button("delete").hidden = !item;
   $("text-options").hidden = item?.kind !== "text";
+  $("selection-hint").hidden = !item;
+  if (item) {
+    $<HTMLSelectElement>("color").value = item.color;
+    if (item.kind !== "text")
+      $<HTMLSelectElement>("size").value = String(item.size);
+    $("selection-hint").textContent =
+      item.kind === "text"
+        ? "Type below. Wrap width controls line breaks; the outline follows the words. Delete removes it."
+        : item.kind === "image"
+          ? "Drag to move. Corner handle resizes proportionally. Delete removes it."
+          : "Drag to move. Corner handle resizes. Delete removes it.";
+  }
   if (item?.kind === "text") {
     $<HTMLTextAreaElement>("text-content").value = item.text || "";
     $<HTMLInputElement>("text-size").value = String(item.size);
+    $<HTMLInputElement>("text-width").value = String(Math.round(item.w));
   }
+  syncToolChrome();
 }
-function newItem(kind: Addition["kind"], point: Point): Addition {
+function newItem(kind: Addition["kind"]): Addition {
   return {
     id: crypto.randomUUID(),
     page: pageIndex,
     kind,
-    x: point.x,
-    y: point.y,
-    w: kind === "text" ? 190 : 25,
-    h: kind === "text" ? 50 : 25,
+    x: 0,
+    y: 0,
+    w: 25,
+    h: 25,
     color: $<HTMLSelectElement>("color").value,
     size: kind === "text" ? 14 : Number($<HTMLSelectElement>("size").value),
   };
+}
+function placementFor(kind: Addition["kind"], point: Point): Addition | null {
+  if (!doc) return null;
+  const viewport = doc.viewports[pageIndex],
+    item = newItem(kind);
+  if (kind === "tick") {
+    const box = tickPlacement(point, viewport.width, viewport.height);
+    Object.assign(item, box);
+  } else if (kind === "circle") {
+    Object.assign(
+      item,
+      defaultCirclePlacement(point, viewport.width, viewport.height),
+    );
+  } else if (kind === "image") {
+    const stamp = signatures.find((s) => s.id === selectedSignature);
+    if (!stamp) return null;
+    item.image = stamp.image;
+    Object.assign(
+      item,
+      imagePlacement(point, stamp.ratio, viewport.width, viewport.height),
+    );
+  } else if (kind === "text") {
+    Object.assign(
+      item,
+      textPlacement(point, viewport.width, viewport.height, item.size),
+    );
+    item.text = "";
+  }
+  return item;
 }
 function place(point: Point) {
   if (!doc || state.additions.length >= LIMITS.objects)
@@ -738,52 +967,88 @@ function place(point: Point) {
       "This document has reached the limit of 3,000 additions. Save a completed copy before continuing.",
       true,
     );
-  const item = newItem(
-    tool === "image" ? "image" : tool === "tick" ? "tick" : "text",
-    point,
-  );
-  if (item.kind === "image" && signature) {
-    item.image = signature.image;
-    item.w = Math.min(
-      180,
-      doc.viewports[pageIndex].width * 0.45,
-      doc.viewports[pageIndex].height * 0.3 * signature.ratio,
-    );
-    item.h = item.w / signature.ratio;
+  const kind = tool === "image" ? "image" : tool === "tick" ? "tick" : "text";
+  if (kind === "image" && !signatures.some((s) => s.id === selectedSignature))
+    return openSignatureTray();
+  const item = placementFor(kind, point);
+  if (!item) return;
+  hidePreview();
+  if (kind === "text") {
+    const before = clone(state);
+    state.additions.push(item);
+    textDraft = { before, id: item.id };
+    selected = item.id;
+    showSelection();
+    drawAdditions();
+    $<HTMLTextAreaElement>("text-content").focus();
+    return;
   }
-  if (item.kind === "text") item.text = "";
-  const viewport = doc.viewports[pageIndex];
-  item.w = Math.min(item.w, viewport.width);
-  item.x = Math.max(0, Math.min(item.x, viewport.width - item.w));
-  item.y = Math.max(0, Math.min(item.y, viewport.height - item.h));
   remember();
   state.additions.push(item);
-  selected = item.id;
-  setTool("select");
+  selected = "";
   showSelection();
   drawAdditions();
-  if (item.kind === "text") $<HTMLTextAreaElement>("text-content").focus();
 }
-let textStart: Snapshot | undefined;
+let textStart: Snapshot | undefined,
+  textDraft: { before: Snapshot; id: string } | undefined;
+function updateTextItem(item: Addition) {
+  item.h = textHeight(item);
+  if (doc) {
+    const viewport = doc.viewports[pageIndex];
+    if (item.w > viewport.width - item.x) item.w = viewport.width - item.x;
+    if (item.h > viewport.height - item.y) item.h = viewport.height - item.y;
+  }
+}
+function finishText() {
+  const item = textDraft
+    ? state.additions.find((a) => a.id === textDraft!.id)
+    : state.additions.find((a) => a.id === selected);
+  if (textDraft) {
+    if (!item || !(item.text || "").trim()) {
+      if (item) state.additions = state.additions.filter((a) => a !== item);
+      if (selected === textDraft.id) selected = "";
+      textDraft = undefined;
+      textStart = undefined;
+      dirty = hasUnexportedEdits();
+      syncChrome();
+      updateHistory();
+      showSelection();
+      drawAdditions();
+      return;
+    }
+    const before = textDraft.before;
+    textDraft = undefined;
+    textStart = undefined;
+    remember(before);
+    updateTextItem(item);
+  } else if (textStart) {
+    if (JSON.stringify(textStart) !== JSON.stringify(state))
+      remember(textStart);
+    textStart = undefined;
+    if (item?.kind === "text") updateTextItem(item);
+  }
+  selected = "";
+  showSelection();
+  drawAdditions();
+}
 $<HTMLTextAreaElement>("text-content").onfocus = () => {
-  textStart = clone(state);
+  if (!textDraft && !textStart) textStart = clone(state);
 };
 $<HTMLTextAreaElement>("text-content").oninput = () => {
   const item = state.additions.find((a) => a.id === selected);
   if (!item || !doc) return;
   item.text = $<HTMLTextAreaElement>("text-content").value.slice(0, 10000);
-  item.h = Math.max(
-    30,
-    lines(item.text, item.w, item.size, doc.font).length * item.size * 1.25 + 4,
-  );
-  dirty = true;
-  revokeOutput();
+  updateTextItem(item);
+  if (item.text.trim()) {
+    dirty = true;
+    revokeOutput();
+  }
   drawAdditions();
 };
 $<HTMLTextAreaElement>("text-content").onblur = () => {
-  if (textStart && JSON.stringify(textStart) !== JSON.stringify(state))
-    remember(textStart);
-  textStart = undefined;
+  // Done and tool switches commit explicitly; blur is the fallback for a click
+  // on the page or another control.
+  if (textDraft || textStart) finishText();
 };
 $<HTMLInputElement>("text-size").onchange = () => {
   const item = state.additions.find((a) => a.id === selected);
@@ -793,20 +1058,54 @@ $<HTMLInputElement>("text-size").onchange = () => {
     72,
     Math.max(6, Number($<HTMLInputElement>("text-size").value) || 14),
   );
-  item.h = Math.max(
-    30,
-    lines(item.text || "", item.w, item.size, doc.font).length *
-      item.size *
-      1.25 +
-      4,
+  updateTextItem(item);
+  drawAdditions();
+};
+$<HTMLInputElement>("text-width").onchange = () => {
+  const item = state.additions.find((a) => a.id === selected);
+  if (!item || !doc || item.kind !== "text") return;
+  remember();
+  item.w = Math.min(
+    doc.viewports[pageIndex].width - item.x,
+    Math.max(40, Number($<HTMLInputElement>("text-width").value) || 190),
   );
+  updateTextItem(item);
   drawAdditions();
 };
 button("finish-text").onclick = () => {
-  selected = "";
-  showSelection();
-  drawAdditions();
+  finishText();
   $("page").focus();
+};
+$<HTMLTextAreaElement>("text-content").onkeydown = (event) => {
+  if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    finishText();
+    setTool("select");
+    $("page").focus();
+  } else if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+    event.preventDefault();
+    finishText();
+    $("page").focus();
+  }
+};
+$<HTMLSelectElement>("color").onchange = () => {
+  const item = state.additions.find((a) => a.id === selected);
+  if (!item || item.kind === "image") return;
+  remember();
+  item.color = $<HTMLSelectElement>("color").value;
+  drawAdditions();
+};
+$<HTMLSelectElement>("size").onchange = () => {
+  const item = state.additions.find((a) => a.id === selected);
+  if (!item || item.kind === "image") return;
+  remember();
+  item.size = Number($<HTMLSelectElement>("size").value);
+  if (item.kind === "text") {
+    updateTextItem(item);
+    $<HTMLInputElement>("text-size").value = String(item.size);
+  }
+  drawAdditions();
 };
 function point(event: PointerEvent): Point {
   const rect = $("page").getBoundingClientRect();
@@ -827,6 +1126,132 @@ function point(event: PointerEvent): Point {
     ),
   };
 }
+let aiming:
+    | { id: number; start: Point; tool: string; circle?: Rect }
+    | undefined,
+  previewCircle: Rect | undefined;
+function hidePreview() {
+  previewPoint = undefined;
+  previewCircle = undefined;
+  aiming = undefined;
+  const svg = $<HTMLElement>("tool-preview") as unknown as SVGSVGElement;
+  svg.replaceChildren();
+}
+function drawPreview() {
+  if (!doc) return;
+  const svg = $<HTMLElement>("tool-preview") as unknown as SVGSVGElement,
+    viewport = doc.viewports[pageIndex];
+  svg.setAttribute("viewBox", `0 0 ${viewport.width} ${viewport.height}`);
+  svg.replaceChildren();
+  if (!previewPoint || busy || tool === "select" || textDraft) return;
+  const p = previewPoint,
+    ghost = el("g", {
+      class: "preview-ghost",
+      "aria-hidden": "true",
+    });
+  if (tool === "text") {
+    const item = placementFor("text", p);
+    if (!item) return;
+    ghost.append(
+      el("rect", {
+        x: item.x,
+        y: item.y,
+        width: item.w,
+        height: Math.max(item.size * 1.25, 20),
+        fill: "none",
+        stroke: item.color,
+        "stroke-width": 1 / zoom,
+        "stroke-dasharray": `${3 / zoom}`,
+      }),
+      el("line", {
+        x1: item.x,
+        y1: item.y + 1,
+        x2: item.x,
+        y2: item.y + item.size + 2,
+        stroke: item.color,
+        "stroke-width": 1.5 / zoom,
+      }),
+      el("text", {
+        x: item.x + 5,
+        y: item.y + item.size,
+        fill: item.color,
+        "font-size": item.size,
+        "font-family": "Space, sans-serif",
+      }),
+    );
+    ghost.lastElementChild!.textContent = "Text";
+  } else if (tool === "tick") {
+    const item = placementFor("tick", p);
+    if (!item) return;
+    ghost.append(
+      el("polyline", {
+        points: tickPoints(item)
+          .map((point) => `${point.x},${point.y}`)
+          .join(" "),
+        stroke: item.color,
+        "stroke-width": item.size,
+        fill: "none",
+        "stroke-linecap": "round",
+        "stroke-linejoin": "round",
+      }),
+    );
+  } else if (tool === "image") {
+    const item = placementFor("image", p);
+    if (!item) return;
+    ghost.append(
+      el("image", {
+        href: item.image || "",
+        x: item.x,
+        y: item.y,
+        width: item.w,
+        height: item.h,
+        preserveAspectRatio: "none",
+      }),
+    );
+  } else if (tool === "circle") {
+    const box =
+      previewCircle ||
+      defaultCirclePlacement(p, viewport.width, viewport.height);
+    ghost.append(
+      el("circle", {
+        cx: box.x + box.w / 2,
+        cy: box.y + box.h / 2,
+        r: circleRadius({
+          ...box,
+          size: Number($<HTMLSelectElement>("size").value),
+        }),
+        fill: "none",
+        stroke: $<HTMLSelectElement>("color").value,
+        "stroke-width": $<HTMLSelectElement>("size").value,
+      }),
+    );
+  } else if (["pen", "highlight", "eraser"].includes(tool)) {
+    const eraser = tool === "eraser",
+      size = eraser
+        ? Math.max(14 / zoom, 8)
+        : tool === "highlight"
+          ? 16
+          : Number($<HTMLSelectElement>("size").value),
+      color = eraser
+        ? "#68707c"
+        : tool === "highlight"
+          ? "#efb900"
+          : $<HTMLSelectElement>("color").value;
+    ghost.append(
+      el("circle", {
+        cx: p.x,
+        cy: p.y,
+        r: Math.max(2, size / 2),
+        fill: eraser ? "none" : color,
+        stroke: eraser ? color : "none",
+        "stroke-width": eraser ? 1.5 / zoom : 0,
+        "fill-opacity": tool === "highlight" ? 0.32 : 0.55,
+        "stroke-dasharray": eraser ? `${3 / zoom}` : "",
+      }),
+    );
+  }
+  svg.append(ghost);
+}
 let gesture:
   | {
       id: number;
@@ -844,6 +1269,7 @@ function beginMove(event: PointerEvent, item: Addition, resize = false) {
   if (tool !== "select") return;
   event.preventDefault();
   event.stopPropagation();
+  finishText();
   settleField();
   selected = item.id;
   showSelection();
@@ -895,9 +1321,10 @@ $("page").onpointerdown = (event) => {
   )
     return;
   pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-  if (pointers.size === 2 && ["pen", "highlight", "eraser"].includes(tool)) {
+  if (pointers.size === 2 && tool !== "select") {
     if (gesture) state = gesture.before;
     gesture = undefined;
+    hidePreview();
     const [a, b] = [...pointers.values()];
     pinch = { distance: Math.hypot(a.x - b.x, a.y - b.y), zoom, ratio: 1 };
     drawAdditions();
@@ -905,6 +1332,7 @@ $("page").onpointerdown = (event) => {
   }
   if (tool === "select") {
     selected = "";
+    hidePreview();
     showSelection();
     drawAdditions();
     return;
@@ -912,8 +1340,16 @@ $("page").onpointerdown = (event) => {
   event.preventDefault();
   const p = point(event);
   $("page").setPointerCapture(event.pointerId);
-  if (["text", "tick", "image"].includes(tool)) {
-    place(p);
+  if (["text", "tick", "image", "circle"].includes(tool)) {
+    if (tool === "image" && !signatures.some((s) => s.id === selectedSignature))
+      return openSignatureTray();
+    aiming = { id: event.pointerId, start: p, tool };
+    previewPoint = p;
+    previewCircle =
+      tool === "circle"
+        ? defaultCirclePlacement(p, doc.viewports[pageIndex].width, doc.viewports[pageIndex].height)
+        : undefined;
+    drawPreview();
     return;
   }
   if (
@@ -922,7 +1358,9 @@ $("page").onpointerdown = (event) => {
       LIMITS.points
   )
     return status("Save a completed copy before adding more marks.", true);
-  const item = newItem("ink", p);
+  const item = newItem("ink");
+  item.x = p.x;
+  item.y = p.y;
   item.points = [p];
   if (tool === "highlight") {
     item.size = 16;
@@ -946,38 +1384,64 @@ $("page").onpointermove = (event) => {
       Math.hypot(a.x - b.x, a.y - b.y) / Math.max(1, pinch.distance);
     return;
   }
-  if (!gesture || gesture.id !== event.pointerId || !doc) return;
-  const p = point(event),
-    dx = p.x - gesture.start.x,
+  if (!doc) return;
+  const p = point(event);
+  if (aiming && aiming.id === event.pointerId) {
+    previewPoint = p;
+    if (aiming.tool === "circle") {
+      const viewport = doc.viewports[pageIndex];
+      previewCircle = circleDragBox(
+        aiming.start,
+        p,
+        viewport.width,
+        viewport.height,
+      ) || undefined;
+    }
+    drawPreview();
+    return;
+  }
+  if (!gesture) {
+    if (tool !== "select" && event.pointerType !== "touch") {
+      previewPoint = p;
+      previewCircle = undefined;
+      drawPreview();
+    }
+    return;
+  }
+  if (gesture.id !== event.pointerId) return;
+  const dx = p.x - gesture.start.x,
     dy = p.y - gesture.start.y;
   if (gesture.moving) {
     const original = gesture.moving,
-      item = state.additions.find((a) => a.id === original.id)!;
-    const viewport = doc.viewports[pageIndex];
+      item = state.additions.find((a) => a.id === original.id)!,
+      viewport = doc.viewports[pageIndex];
     if (gesture.resize) {
-      const ratio = original.w / original.h;
-      const maxWidth = Math.min(
-        viewport.width - item.x,
-        item.kind === "image" || item.kind === "tick"
-          ? (viewport.height - item.y) * ratio
-          : viewport.width,
+      const box = resizeBox(
+        item.kind,
+        original,
+        dx,
+        dy,
+        viewport.width,
+        viewport.height,
       );
-      item.w = Math.max(
-        Math.min(12, maxWidth),
-        Math.min(maxWidth, original.w + dx),
-      );
-      item.h =
-        item.kind === "image" || item.kind === "tick"
-          ? item.w / ratio
-          : Math.max(12, original.h + dy);
+      item.w = box.w;
+      item.h = box.h;
+      if (item.kind === "text") updateTextItem(item);
       if (item.kind === "ink")
         item.points = original.points?.map((p) => ({
           x: item.x + ((p.x - original.x) * item.w) / original.w,
           y: item.y + ((p.y - original.y) * item.h) / original.h,
         }));
     } else {
-      item.x = Math.max(0, Math.min(viewport.width - item.w, original.x + dx));
-      item.y = Math.max(0, Math.min(viewport.height - item.h, original.y + dy));
+      const bounds = item.kind === "text" ? itemBounds(item) : item;
+      item.x = Math.max(
+        0,
+        Math.min(viewport.width - bounds.w, original.x + dx),
+      );
+      item.y = Math.max(
+        0,
+        Math.min(viewport.height - bounds.h, original.y + dy),
+      );
       if (item.kind === "ink")
         item.points = original.points?.map((p) => ({
           x: p.x + item.x - original.x,
@@ -1004,14 +1468,51 @@ $("page").onpointermove = (event) => {
     drawAdditions(gesture.item);
   } else erase(p);
 };
+$("page").onpointerleave = () => {
+  if (!aiming && !gesture) hidePreview();
+};
 function endGesture(event: PointerEvent, cancelled = false) {
   pointers.delete(event.pointerId);
   if (pinch) {
     if (pointers.size === 0) {
       zoom = Math.max(0.2, Math.min(3, pinch.zoom * pinch.ratio));
+      zoomMode = "manual";
       pinch = undefined;
+      hidePreview();
       void renderPage();
     }
+    return;
+  }
+  if (aiming && aiming.id === event.pointerId) {
+    const completed = aiming,
+      p = previewPoint || completed.start;
+    aiming = undefined;
+    if (cancelled) {
+      previewCircle = undefined;
+      if (event.pointerType === "touch") hidePreview();
+      else drawPreview();
+      return;
+    }
+    if (completed.tool === "circle" && doc) {
+      const viewport = doc.viewports[pageIndex],
+        box =
+          previewCircle ||
+          defaultCirclePlacement(p, viewport.width, viewport.height),
+        item = newItem("circle");
+      Object.assign(item, box);
+      previewCircle = undefined;
+      remember();
+      state.additions.push(item);
+      selected = "";
+      showSelection();
+      hidePreview();
+      drawAdditions();
+      return;
+    }
+    previewCircle = undefined;
+    place(p);
+    hidePreview();
+    drawAdditions();
     return;
   }
   if (!gesture || gesture.id !== event.pointerId) return;
@@ -1035,6 +1536,18 @@ $("page").onpointerup = (e) => endGesture(e);
 $("page").onpointercancel = (e) => endGesture(e, true);
 function removeSelected() {
   if (!selected) return;
+  if (textDraft && textDraft.id === selected) {
+    state.additions = state.additions.filter((a) => a.id !== selected);
+    textDraft = undefined;
+    textStart = undefined;
+    selected = "";
+    dirty = hasUnexportedEdits();
+    syncChrome();
+    updateHistory();
+    showSelection();
+    drawAdditions();
+    return;
+  }
   remember();
   state.additions = state.additions.filter((a) => a.id !== selected);
   selected = "";
@@ -1042,18 +1555,26 @@ function removeSelected() {
   drawAdditions();
 }
 button("delete").onclick = removeSelected;
-button("clear-field").onclick = () => {
-  if (!focusedField) return;
+function clearField(field = focusedField) {
+  if (!field || !doc) return;
   settleField();
   remember();
-  const value = state.values[focusedField];
-  state.values[focusedField] = Array.isArray(value)
+  const value = state.values[field];
+  state.values[field] = Array.isArray(value)
     ? []
     : typeof value === "boolean"
       ? false
       : "";
   renderFields();
-};
+  const input = document.querySelector<HTMLElement>(
+    `[data-field="${CSS.escape(field)}"]`,
+  );
+  input?.focus();
+  status("Field cleared. Save PDF to include the change.");
+}
+button("clear-field").onclick = () => clearField();
+button("clear-field-inline").onclick = () =>
+  clearField(button("clear-field-inline").dataset.clearField || focusedField);
 function objectKey(event: KeyboardEvent, item: Addition) {
   if (tool !== "select") return;
   selected = item.id;
@@ -1093,13 +1614,25 @@ function objectKey(event: KeyboardEvent, item: Addition) {
   if (["+", "-", "="].includes(event.key)) {
     event.preventDefault();
     remember();
-    const factor = event.key === "-" ? 0.9 : 1.1;
-    item.w *= factor;
-    item.h *= factor;
+    const factor = event.key === "-" ? 0.9 : 1.1,
+      viewport = doc!.viewports[pageIndex],
+      box = resizeBox(
+        item.kind,
+        item,
+        item.w * (factor - 1),
+        item.h * (factor - 1),
+        viewport.width,
+        viewport.height,
+      );
+    const sx = box.w / item.w,
+      sy = box.h / item.h;
+    item.w = box.w;
+    item.h = box.h;
+    if (item.kind === "text") updateTextItem(item);
     if (item.points)
       item.points = item.points.map((p) => ({
-        x: item.x + (p.x - item.x) * factor,
-        y: item.y + (p.y - item.y) * factor,
+        x: item.x + (p.x - item.x) * sx,
+        y: item.y + (p.y - item.y) * sy,
       }));
   }
   showSelection();
@@ -1163,9 +1696,139 @@ for (const [id, action] of [
   mobileHistory.append(copy);
 }
 headerActions.insertBefore(mobileHistory, button("more-actions"));
-button("signature").onclick = () =>
+const MAX_SIGNATURES = 6,
+  MAX_SIGNATURE_MEMORY = 20 * 1024 * 1024;
+function closeSignatureTray() {
+  signatureTrayOpen = false;
+  $("signature-tray").hidden = true;
+  button("signature").setAttribute("aria-expanded", "false");
+}
+function renderSignatureTray() {
+  const list = $("signature-list");
+  list.replaceChildren();
+  signatures.forEach((stamp, index) => {
+    const item = document.createElement("li"),
+      choose = document.createElement("button"),
+      remove = document.createElement("button");
+    choose.type = "button";
+    choose.className = "stamp-option";
+    choose.setAttribute(
+      "aria-pressed",
+      String(stamp.id === selectedSignature),
+    );
+    choose.title = `${stamp.name} — click to stamp`;
+    choose.onclick = () => {
+      selectedSignature = stamp.id;
+      renderSignatureTray();
+      setTool("image");
+      syncToolChrome();
+      status(
+        `${stamp.name} selected. Click or press-drag-release on the page to stamp; choose Select to resize.`,
+      );
+    };
+    const image = document.createElement("img");
+    image.src = stamp.image;
+    image.alt = "";
+    const label = document.createElement("span");
+    label.textContent = stamp.name;
+    choose.append(image, label);
+    remove.type = "button";
+    remove.className = "stamp-remove";
+    remove.textContent = "Remove";
+    remove.setAttribute("aria-label", `Remove ${stamp.name} from the tray`);
+    remove.onclick = () => {
+      if (selectedSignature === stamp.id)
+        selectedSignature = signatures[index + 1]?.id || signatures[index - 1]?.id || "";
+      signatures = signatures.filter((s) => s.id !== stamp.id);
+      renderSignatureTray();
+      if (!signatures.length && tool === "image") setTool("select");
+      syncToolChrome();
+      status(
+        "Removed from the tray. Stamps already placed on the page are unchanged.",
+      );
+    };
+    item.append(choose, remove);
+    list.append(item);
+  });
+  const empty = $("signature-empty");
+  empty.hidden = signatures.length > 0;
+  $("signature-count").textContent = `${signatures.length} of ${MAX_SIGNATURES}`;
+}
+function openSignatureTray() {
+  if (!signatures.length) {
+    $<HTMLInputElement>("signature-file").click();
+    return;
+  }
+  if (!selectedSignature) selectedSignature = signatures[0].id;
+  setTool("image");
+  signatureTrayOpen = true;
+  $("signature-tray").hidden = false;
+  button("signature").setAttribute("aria-expanded", "true");
+  renderSignatureTray();
+  syncToolChrome();
+  document.querySelector<HTMLButtonElement>(".stamp-option")?.focus();
+}
+button("signature").onclick = () => {
+  if (signatureTrayOpen) closeSignatureTray();
+  else openSignatureTray();
+};
+button("add-signature").onclick = () =>
   $<HTMLInputElement>("signature-file").click();
-button("reuse").onclick = () => setTool("image");
+button("close-signature-tray").onclick = () => {
+  closeSignatureTray();
+  button("signature").focus();
+};
+function readAsDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(Error("The PNG could not be read."));
+    reader.readAsDataURL(blob);
+  });
+}
+async function trimmedSignature(file: File) {
+  const bitmap = await createImageBitmap(file);
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) throw Error("This browser could not read the PNG.");
+    context.drawImage(bitmap, 0, 0);
+    const data = context.getImageData(0, 0, bitmap.width, bitmap.height).data;
+    let left = bitmap.width,
+      top = bitmap.height,
+      right = -1,
+      bottom = -1;
+    for (let y = 0; y < bitmap.height; y++)
+      for (let x = 0; x < bitmap.width; x++)
+        if (data[(y * bitmap.width + x) * 4 + 3] > 0) {
+          if (x < left) left = x;
+          if (x > right) right = x;
+          if (y < top) top = y;
+          if (y > bottom) bottom = y;
+        }
+    if (right < left || bottom < top)
+      throw Error("That PNG is fully transparent. Choose a visible signature.");
+    const width = right - left + 1,
+      height = bottom - top + 1;
+    if (width === bitmap.width && height === bitmap.height)
+      return { image: await readAsDataUrl(file), ratio: width / height };
+    const cropped = document.createElement("canvas");
+    cropped.width = width;
+    cropped.height = height;
+    cropped
+      .getContext("2d")
+      ?.drawImage(bitmap, left, top, width, height, 0, 0, width, height);
+    const blob = await new Promise<Blob | null>((resolve) =>
+      cropped.toBlob(resolve, "image/png"),
+    );
+    if (!blob) throw Error("The PNG could not be prepared.");
+    return { image: await readAsDataUrl(blob), ratio: width / height };
+  } finally {
+    bitmap.close();
+  }
+}
 $<HTMLInputElement>("signature-file").onchange = async (event) => {
   const input = event.target as HTMLInputElement,
     file = input.files?.[0];
@@ -1173,6 +1836,19 @@ $<HTMLInputElement>("signature-file").onchange = async (event) => {
   if (!file) return;
   if (file.size > LIMITS.signature)
     return status("Choose a PNG signature smaller than 5 MB.", true);
+  if (signatures.length >= MAX_SIGNATURES)
+    return status(
+      `The tray holds ${MAX_SIGNATURES} signatures. Remove one before adding another.`,
+      true,
+    );
+  if (
+    signatures.reduce((total, stamp) => total + stamp.bytes, 0) + file.size >
+    MAX_SIGNATURE_MEMORY
+  )
+    return status(
+      "The signature tray is full. Remove a signature before adding another.",
+      true,
+    );
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
     if (![137, 80, 78, 71, 13, 10, 26, 10].every((v, i) => bytes[i] === v))
@@ -1182,18 +1858,25 @@ $<HTMLInputElement>("signature-file").onchange = async (event) => {
       h = view.getUint32(20);
     if (!w || !h || w * h > 8_000_000 || w > 8192 || h > 8192)
       throw Error("Use a PNG signature up to 8 million pixels.");
-    const bitmap = await createImageBitmap(file);
-    bitmap.close();
-    const reader = new FileReader();
-    const image = await new Promise<string>((resolve, reject) => {
-      reader.onload = () => resolve(String(reader.result));
-      reader.onerror = () => reject(Error("The PNG could not be read."));
-      reader.readAsDataURL(file);
-    });
-    signature = { image, ratio: w / h };
-    button("reuse").hidden = false;
+    const trimmed = await trimmedSignature(file);
+    const stamp: SignatureStamp = {
+      id: crypto.randomUUID(),
+      name: `Signature ${signatures.length + 1}`,
+      image: trimmed.image,
+      ratio: trimmed.ratio,
+      bytes: file.size,
+    };
+    signatures.push(stamp);
+    selectedSignature = stamp.id;
+    renderSignatureTray();
     setTool("image");
-    status("Signature ready. Tap the page to place it, then drag or resize.");
+    signatureTrayOpen = true;
+    $("signature-tray").hidden = false;
+    button("signature").setAttribute("aria-expanded", "true");
+    syncToolChrome();
+    status(
+      "Signature added. Click or press-drag-release on the page to stamp it; the tray keeps it for this tab only.",
+    );
   } catch (e) {
     status(
       e instanceof Error ? e.message : "The signature could not be opened.",
@@ -1203,13 +1886,16 @@ $<HTMLInputElement>("signature-file").onchange = async (event) => {
 };
 function changePage(index: number) {
   if (!doc) return;
+  finishText();
   focusedField = "";
   button("clear-field").hidden = true;
+  button("clear-field-inline").hidden = true;
   settleField();
   pageIndex = Math.max(0, Math.min(doc.viewports.length - 1, index));
   selected = "";
+  hidePreview();
   showSelection();
-  fit();
+  if (zoomMode === "fit") fit();
   void renderPage();
   $("workspace").scrollTo(0, 0);
 }
@@ -1220,13 +1906,17 @@ $<HTMLSelectElement>("page-number").onchange = () =>
 function setZoom(value: number) {
   if (!doc) return;
   settleField();
-  zoom = Math.max(0.2, Math.min(3, value));
+  zoomMode = "manual";
+  zoom = Math.max(0.15, Math.min(3, value));
+  hidePreview();
   void renderPage();
 }
 button("zoom-in").onclick = () => setZoom(zoom * 1.2);
 button("zoom-out").onclick = () => setZoom(zoom / 1.2);
 button("fit").onclick = () => {
+  zoomMode = "fit";
   fit();
+  hidePreview();
   void renderPage();
 };
 function revokeOutput() {
@@ -1235,20 +1925,32 @@ function revokeOutput() {
     outputUrl = "";
   }
   document.getElementById("print-frame")?.remove();
-  document.getElementById("print-fallback")?.remove();
+  if (printReady) {
+    printReady = false;
+    const node = $("status");
+    if (node.dataset.tone === "info") {
+      node.textContent = "";
+      node.dataset.tone = "";
+      node.dataset.visible = "false";
+    }
+  }
   syncChrome();
 }
 async function save(print = false) {
   if (!doc || busy) return;
+  finishText();
   (document.activeElement as HTMLElement)?.blur();
   settleField();
   busy = true;
+  failed = false;
   syncChrome();
   button("save").disabled = button("print").disabled = true;
   status(
     print
-      ? "Preparing your completed PDF for printing…"
-      : "Preparing your completed PDF…",
+      ? "Creating the completed PDF for printing…"
+      : "Creating your completed PDF…",
+    false,
+    { persistent: true },
   );
   try {
     const exportingDocument = doc,
@@ -1282,25 +1984,30 @@ async function save(print = false) {
       };
       frame.src = outputUrl;
       document.body.append(frame);
-      const fallback = document.createElement("a");
-      fallback.id = "print-fallback";
-      fallback.href = outputUrl;
-      fallback.target = "_blank";
-      fallback.textContent = "Open the completed PDF to print";
-      fallback.style.cssText =
-        "display:inline-flex;min-height:44px;align-items:center;margin-left:28px";
-      $("status").after(fallback);
+      printReady = true;
+      dirty = hasUnexportedEdits();
       status(
-        "Your completed PDF is ready. If no print dialog appears, open it below and use your browser’s Print action.",
+        "Completed PDF prepared for printing. If no print dialog appears, open it and use your browser’s Print action. Paperwork cannot confirm that a printer produced a page.",
+        false,
+        {
+          persistent: true,
+          action: outputUrl
+            ? { label: "Open completed PDF to print", href: outputUrl }
+            : undefined,
+        },
       );
     } else {
       a.click();
       lastSaved = JSON.stringify(snapshot);
       dirty = JSON.stringify(state) !== lastSaved;
-      status("PDF downloaded. You can keep editing here.");
+      printReady = false;
+      status(
+        "PDF downloaded. Your edits remain in this tab; later changes need another download.",
+      );
     }
   } catch (e) {
     revokeOutput();
+    failed = true;
     status(
       e instanceof Error
         ? e.message
@@ -1381,6 +2088,11 @@ window.addEventListener("keydown", (event) => {
     return;
   }
   if (event.key === "Escape") {
+    if (signatureTrayOpen) {
+      closeSignatureTray();
+      button("signature").focus();
+      return;
+    }
     selected = "";
     setTool("select");
     return;
@@ -1392,6 +2104,7 @@ window.addEventListener("keydown", (event) => {
     e: "eraser",
     t: "text",
     k: "tick",
+    c: "circle",
     h: "highlight",
   };
   if (tools[event.key.toLowerCase()] && !event.ctrlKey && !event.metaKey) {
@@ -1399,7 +2112,7 @@ window.addEventListener("keydown", (event) => {
     setTool(tools[event.key.toLowerCase()]);
   }
   if (event.key.toLowerCase() === "s" && !event.ctrlKey && !event.metaKey)
-    button("signature").click();
+    openSignatureTray();
   if ((event.key === "Delete" || event.key === "Backspace") && selected) {
     event.preventDefault();
     removeSelected();

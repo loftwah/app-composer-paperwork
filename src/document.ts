@@ -34,7 +34,7 @@ export type Point = { x: number; y: number };
 export type Addition = {
   id: string;
   page: number;
-  kind: "ink" | "text" | "tick" | "image";
+  kind: "ink" | "text" | "tick" | "image" | "circle";
   x: number;
   y: number;
   w: number;

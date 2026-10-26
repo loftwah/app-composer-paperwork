@@ -21,6 +21,7 @@ import type { OpenDocument, Snapshot } from "./document.ts";
 import { safeText, lines } from "./text.ts";
 import { writeMetadata } from "./metadata.ts";
 import { fitFieldAppearance, markFieldPrintable } from "./fields.ts";
+import { circleRadius, tickPoints } from "./geometry.ts";
 function color(hex: string) {
   return rgb(
     parseInt(hex.slice(1, 3), 16) / 255,
@@ -81,8 +82,7 @@ export async function exportDocument(
             item.h,
             lines(item.text || "", item.w, item.size, doc.font).length *
               item.size *
-              1.25 +
-              4,
+              1.25,
           )
         : item.h;
     if (
@@ -170,9 +170,18 @@ export async function exportDocument(
       continue;
     }
     // A local upright coordinate system maps identically through crop, rotation and zoom.
-    const origin = viewport.convertToPdfPoint(item.x, item.y + item.h),
-      right = viewport.convertToPdfPoint(item.x + 1, item.y + item.h),
-      up = viewport.convertToPdfPoint(item.x, item.y + item.h - 1);
+    const layoutHeight =
+        item.kind === "text"
+          ? Math.max(
+              item.h,
+              lines(item.text || "", item.w, item.size, font).length *
+                item.size *
+                1.25,
+            )
+          : item.h,
+      origin = viewport.convertToPdfPoint(item.x, item.y + layoutHeight),
+      right = viewport.convertToPdfPoint(item.x + 1, item.y + layoutHeight),
+      up = viewport.convertToPdfPoint(item.x, item.y + layoutHeight - 1);
     page.pushOperators(
       pushGraphicsState(),
       concatTransformationMatrix(
@@ -189,19 +198,29 @@ export async function exportDocument(
       page.drawImage(image, { x: 0, y: 0, width: item.w, height: item.h });
     }
     if (item.kind === "tick") {
-      page.drawLine({
-        start: { x: item.w * 0.12, y: item.h * 0.48 },
-        end: { x: item.w * 0.4, y: item.h * 0.18 },
-        thickness: item.size,
-        color: color(item.color),
-        lineCap: 1,
-      });
-      page.drawLine({
-        start: { x: item.w * 0.4, y: item.h * 0.18 },
-        end: { x: item.w * 0.9, y: item.h * 0.86 },
-        thickness: item.size,
-        color: color(item.color),
-        lineCap: 1,
+      const points = tickPoints({
+        x: 0,
+        y: 0,
+        w: item.w,
+        h: item.h,
+      }).map((point) => ({ x: point.x, y: item.h - point.y }));
+      for (let index = 1; index < points.length; index++)
+        page.drawLine({
+          start: points[index - 1],
+          end: points[index],
+          thickness: item.size,
+          color: color(item.color),
+          lineCap: 1,
+        });
+    }
+    if (item.kind === "circle") {
+      page.drawCircle({
+        x: item.w / 2,
+        y: item.h / 2,
+        size: circleRadius(item),
+        borderColor: color(item.color),
+        borderWidth: item.size,
+        borderOpacity: 1,
       });
     }
     if (item.kind === "text") {
@@ -209,7 +228,7 @@ export async function exportDocument(
       lines(item.text || "", item.w, item.size, font).forEach((line, i) =>
         page.drawText(line, {
           x: 0,
-          y: item.h - item.size - i * item.size * 1.25,
+          y: layoutHeight - item.size - i * item.size * 1.25,
           font,
           size: item.size,
           color: color(item.color),

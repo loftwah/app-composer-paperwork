@@ -334,6 +334,44 @@ test("a translucent highlight is one continuous PDF stroke so segment joins do n
   }
 });
 
+test("a circle is exported as real vector page content with its ring geometry", async () => {
+  const doc = await fixture("public/examples/garden-form.pdf");
+  try {
+    const bytes = await exportDocument(doc, {
+      values: doc.initial.values,
+      additions: [
+        {
+          id: "circle",
+          page: 0,
+          kind: "circle",
+          x: 100,
+          y: 500,
+          w: 80,
+          h: 80,
+          color: "#b62b25",
+          size: 2.5,
+        },
+      ],
+    });
+    const { PDFRawStream } = await import("pdf-lib");
+    const saved = await PDFDocument.load(bytes),
+      contents = saved.getPage(0).node.Contents(),
+      stream = saved.context.lookup(
+        contents.get(contents.size() - 1),
+        PDFRawStream,
+      ),
+      operators = new TextDecoder().decode(
+        decodePDFRawStream(stream).decode(),
+      );
+    assert(
+      operators.split("\n").filter((line) => line.endsWith(" c")).length >= 4,
+    );
+    assert(operators.split("\n").includes("S"));
+  } finally {
+    await doc.pdf.loadingTask.destroy();
+  }
+});
+
 test("export refuses additions that would be clipped instead of silently losing part of an edit", async () => {
   const doc = await fixture("public/examples/garden-form.pdf");
   try {
