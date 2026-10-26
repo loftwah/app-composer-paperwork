@@ -18,10 +18,16 @@ for i,(a,b) in enumerate(zip(src,dst)):
 a=src[3].get_images(full=True)[0];b=dst[3].get_images(full=True)[0]
 checks['original_scan_preserved']=hashlib.sha256(fitz.Pixmap(src,a[0]).samples).digest()==hashlib.sha256(fitz.Pixmap(dst,b[0]).samples).digest()
 # pdf-lib must embed the actual transparent source PNG, not a white-backed approximation.
-image=Image.open(base/'demo-signature-transparent.png');alpha=np.asarray(image)[:,:,3]
+# Paperwork trims fully transparent margins before placement, so compare the
+# exact visible-alpha crop, not the original canvas size.
+image=Image.open(base/'demo-signature-transparent.png').convert('RGBA')
+alpha=np.asarray(image)[:,:,3]
+visible=np.argwhere(alpha>0)
+y0,x0=visible.min(0); y1,x1=visible.max(0)+1
+trimmed=alpha[y0:y1,x0:x1]
 images=dst[1].get_images(full=True)
 checks['signature_soft_mask_present']=any(info[1] for info in images)
-checks['signature_alpha_exact']=any(info[1] and fitz.Pixmap(dst,info[1]).width==image.width and fitz.Pixmap(dst,info[1]).height==image.height and np.array_equal(np.frombuffer(fitz.Pixmap(dst,info[1]).samples,dtype=np.uint8).reshape(image.height,image.width),alpha) for info in images)
+checks['signature_alpha_exact']=any(info[1] and fitz.Pixmap(dst,info[1]).width==trimmed.shape[1] and fitz.Pixmap(dst,info[1]).height==trimmed.shape[0] and np.array_equal(np.frombuffer(fitz.Pixmap(dst,info[1]).samples,dtype=np.uint8).reshape(trimmed.shape[0],trimmed.shape[1]),trimmed) for info in images)
 checks['signature_inside_target']=any(fitz.Rect(38, dst[1].rect.height-265,553,dst[1].rect.height-132).contains(rect) for info in images for rect in dst[1].get_image_rects(info[0]))
 # Exact displayed positions on the rotated page, independently obtained from saved PDF text.
 positions=[]

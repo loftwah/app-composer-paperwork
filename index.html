@@ -174,68 +174,94 @@
             </button>
             <button
               id="signature"
+              popovertarget="signature-tray"
               aria-expanded="false"
+              aria-haspopup="dialog"
               aria-controls="signature-tray"
               title="Choose or add a signature stamp (S)"
             >
-              <svg viewBox="0 0 24 24">
+              <svg class="signature-icon" viewBox="0 0 24 24">
                 <path
                   d="M3 16c8-10 7-15 4-10-3 5-3 14 1 10l4-5c-3 8 1 5 4 2 0 4 3 1 5 0M3 21h18"
                 /></svg
-              ><span>Signature</span>
+              ><img
+                id="signature-button-thumb"
+                class="signature-button-thumb"
+                alt=""
+                hidden
+              /><span>Signature</span>
             </button>
-          </div>
-          <div id="context-bar" class="context-bar" hidden>
-            <div class="context-copy">
-              <span id="active-tool" class="active-tool">Select</span>
-              <span id="stamp-state" class="stamp-state" hidden
-                ><img id="stamp-thumb" alt="" /><span id="stamp-name"></span
-              ></span>
-              <p id="tool-hint">Select a field to fill it, or choose a tool.</p>
-              <p id="selection-hint" class="selection-hint" hidden></p>
-            </div>
-            <div class="context-options">
-              <button id="clear-field-inline" hidden>Clear field</button
-              ><label id="color-label"
-                >Ink
-                <select id="color" aria-label="Ink colour">
-                  <option value="#193464">Blue</option>
-                  <option value="#16191e">Black</option>
-                  <option value="#b62b25">Red</option>
-                  <option value="#efb900">Yellow</option>
-                </select></label
-              ><label id="size-label"
-                >Size
-                <select id="size" aria-label="Tool size">
-                  <option value="1.5">Fine</option>
-                  <option value="2.5" selected>Medium</option>
-                  <option value="5">Bold</option>
-                </select></label
-              ><button id="delete" hidden>Delete selected</button>
-            </div>
           </div>
           <section
             id="signature-tray"
-            class="signature-tray"
-            aria-label="Signature stamps"
-            hidden
+            class="signature-picker"
+            popover="auto"
+            role="dialog"
+            aria-labelledby="signature-picker-title"
           >
-            <div class="signature-tray-head">
-              <strong>Signature stamps</strong>
-              <span id="signature-count" class="signature-count"></span>
-              <button id="add-signature" type="button">Add PNG</button>
-              <button id="close-signature-tray" type="button">Close</button>
+            <div class="signature-picker-head">
+              <div>
+                <strong id="signature-picker-title">Signature</strong>
+                <span id="signature-count" class="signature-count"></span>
+              </div>
+              <button
+                id="close-signature-tray"
+                class="icon-button"
+                type="button"
+                aria-label="Close signature picker"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m6 6 12 12M6 18 18 6" />
+                </svg>
+              </button>
+            </div>
+            <div id="signature-preview" class="signature-preview" hidden>
+              <div class="signature-preview-image-wrap">
+                <img
+                  id="signature-preview-image"
+                  alt="Selected signature preview"
+                />
+              </div>
+              <p class="signature-preview-meta">
+                <strong id="signature-preview-name"></strong>
+                <span>Selected for stamping</span>
+              </p>
             </div>
             <p id="signature-empty" class="signature-empty">
-              Add a transparent PNG signature or initials. The tray stays in
-              this tab only and is never uploaded or saved.
+              Add a transparent PNG signature or initials. It stays in this tab
+              only and is never uploaded or saved.
             </p>
-            <ul id="signature-list" class="signature-list"></ul>
-            <p class="signature-note">
-              Choose a stamp, then click the page to place copies. Select moves
-              and resizes a placed copy. Removing a stamp here never removes
-              copies already on the page.
-            </p>
+            <ul
+              id="signature-list"
+              class="signature-list"
+              aria-label="Your signatures"
+            ></ul>
+            <div
+              class="signature-size"
+              role="group"
+              aria-labelledby="signature-size-label"
+            >
+              <span id="signature-size-label">New stamp size</span>
+              <div class="signature-size-options">
+                <button type="button" data-stamp-scale="0.7" aria-pressed="false">
+                  Small
+                </button>
+                <button type="button" data-stamp-scale="1" aria-pressed="true">
+                  Medium
+                </button>
+                <button type="button" data-stamp-scale="1.45" aria-pressed="false">
+                  Large
+                </button>
+              </div>
+            </div>
+            <div class="signature-picker-actions">
+              <button id="add-signature" type="button" class="primary">
+                Add PNG
+              </button>
+              <span class="signature-note"
+                >Applies to new stamps · this tab only</span
+              >
+            </div>
           </section>
           <div class="history">
             <button
@@ -260,32 +286,60 @@
               </svg>
             </button>
           </div>
-        </div>
-        <div id="text-options" class="text-options" hidden>
-          <label
-            >Text
-            <textarea
-              id="text-content"
-              rows="1"
-              placeholder="Type your text here"
-            ></textarea></label
-          ><label
-            >Text size
-            <input
-              id="text-size"
-              type="number"
-              min="6"
-              max="72"
-              value="14" /></label
-          ><label
-            >Wrap width
-            <input
-              id="text-width"
-              type="number"
-              min="40"
-              max="1200"
-              value="190" /></label
-          ><button id="finish-text">Done</button>
+          <div id="toolbar-options" class="toolbar-options">
+            <div id="context-bar" class="context-bar" hidden>
+              <div class="context-copy">
+                <span id="active-tool" class="active-tool">Select</span>
+                <p id="tool-hint">Select a field to fill it, or choose a tool.</p>
+                <p id="selection-hint" class="selection-hint" hidden></p>
+              </div>
+              <div class="context-options">
+                <button id="clear-field-inline" hidden>Clear field</button
+                ><label id="color-label"
+                  >Ink
+                  <select id="color" aria-label="Ink colour">
+                    <option value="#193464">Blue</option>
+                    <option value="#16191e">Black</option>
+                    <option value="#b62b25">Red</option>
+                    <option value="#efb900">Yellow</option>
+                  </select></label
+                ><label id="size-label"
+                  >Size
+                  <select id="size" aria-label="Tool size">
+                    <option value="1.5">Fine</option>
+                    <option value="2.5" selected>Medium</option>
+                    <option value="5">Bold</option>
+                  </select></label
+                ><button id="delete" hidden>Delete selected</button>
+              </div>
+            </div>
+            <div id="text-options" class="text-options" hidden>
+              <label
+                >Text
+                <textarea
+                  id="text-content"
+                  rows="1"
+                  placeholder="Type your text here"
+                ></textarea></label
+              ><label
+                >Text size
+                <input
+                  id="text-size"
+                  type="number"
+                  min="6"
+                  max="72"
+                  value="14" /></label
+              ><label
+                >Wrap width
+                <input
+                  id="text-width"
+                  type="number"
+                  min="40"
+                  max="1200"
+                  value="190" /></label
+              ><button id="finish-text">Done</button>
+            </div>
+          </div>
         </div>
         <div id="workspace" class="workspace">
           <div
@@ -339,6 +393,10 @@
           </div>
         </div>
       </section>
+      <div id="stamp-callout" class="stamp-callout" hidden aria-hidden="true">
+        <img id="stamp-callout-image" alt="" />
+        <span>Release to stamp</span>
+      </div>
       <p id="status" class="status" role="status" aria-live="polite"></p>
     </main>
     <footer>

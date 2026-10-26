@@ -26,8 +26,16 @@ signature, while a separate finger-sized hit box preserves touch picking. Text
 wrap width is explicit, so manual multiline wrapping does not force a giant
 selection box.
 
-Signature is a compact in-memory stamp tray with multiple PNGs, real thumbnails
-and per-stamp remove. Removing a tray stamp leaves placed copies. The header
+Signature is a floating in-memory picker, not an expanding toolbar row. It
+opens over the page without reflowing the document, shows the real transparent
+PNG at a useful size, offers Small/Medium/Large for new stamps, and closes as
+soon as a stamp is chosen while the compact Signature control keeps the
+selected image visible. It holds multiple PNGs; removing a picker stamp leaves
+placed copies. The placement ghost is the actual image with a tight dashed
+frame, so hover and touch show the committed bounds. Touch press-drag-release
+adds a lifted preview above the finger. Tool hints, ink options and text
+controls float directly below the toolbar over the canvas, so selecting an
+addition or changing tools does not move the document. The header
 keeps a persistent document state (Ready, Changes not downloaded, Creating PDF,
 PDF downloaded, PDF ready to print, Couldn’t finish—edits safe); tool state and
 operation feedback are separate. Errors stay until dismissed or resolved.

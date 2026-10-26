@@ -1,11 +1,15 @@
-import { chromium, webkit } from "playwright";
 import { createServer } from "node:http";
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
+import { createRequire } from "node:module";
 import path from "node:path";
 import assert from "node:assert/strict";
 import { PDFDocument, PDFName, PDFString } from "pdf-lib";
+const require = createRequire(import.meta.url);
+const { chromium, webkit } = require(
+  process.env.PLAYWRIGHT_MODULE || "playwright",
+);
 const output = path.resolve(
   process.env.PAPERWORK_EVIDENCE || "output/acceptance",
 );
@@ -520,32 +524,93 @@ try {
     "Tick selection should hug the painted mark",
   );
   receipt.checks.tight_selection_bounds = "pass";
-  await page
-    .locator("#signature-file")
-    .setInputFiles(fixture + "/demo-signature-transparent.png");
+  const layoutNow = () =>
+    page.evaluate(() => {
+      const box = (selector) => {
+        const rect = document.querySelector(selector).getBoundingClientRect();
+        return {
+          x: +rect.x.toFixed(1),
+          y: +rect.y.toFixed(1),
+          w: +rect.width.toFixed(1),
+          h: +rect.height.toFixed(1),
+        };
+      };
+      return {
+        toolbar: box(".toolbar"),
+        page: box("#page"),
+        pageBar: box(".page-bar"),
+        scrollTop: document.querySelector("#workspace").scrollTop,
+      };
+    });
+  const assertStationary = async (before, label) => {
+    const after = await layoutNow();
+    assert.deepEqual(after, before, `${label} must not move the workspace`);
+  };
+  const addSignatureFile = async (file) => {
+    const chooser = page.waitForEvent("filechooser");
+    await page.locator("#add-signature").click();
+    await (await chooser).setFiles(file);
+  };
+  const signatureLayout = await layoutNow();
+  await page.locator("#signature").click();
+  assert.equal(
+    await page.locator("#signature-tray").evaluate((node) => node.matches(":popover-open")),
+    true,
+    "Signature opens a floating picker",
+  );
+  await page.screenshot({ path: output + "/signature-picker-empty.png" });
+  await assertStationary(signatureLayout, "Opening the signature picker");
+  await addSignatureFile(fixture + "/demo-signature-transparent.png");
   await page.waitForFunction(
     () => document.querySelector("#page").dataset.tool === "image",
   );
   assert.equal(await page.locator("#signature-list li").count(), 1);
-  await tap(80, 640);
-  await page.locator("#add-signature").click();
-  await page
-    .locator("#signature-file")
-    .setInputFiles("public/examples/fictional-signature.png");
+  assert.equal(
+    await page.locator("#signature-tray").evaluate((node) => node.matches(":popover-open")),
+    false,
+    "Importing a signature closes the picker",
+  );
+  await assertStationary(signatureLayout, "Importing a signature");
+  await tap(150, 640);
+  const secondSignatureLayout = await layoutNow();
+  await page.locator("#signature").click();
+  assert.equal(
+    await page.locator("#signature-preview-image").evaluate((img) => img.naturalWidth > 20),
+    true,
+    "The picker shows a real preview of the selected signature",
+  );
+  await page.screenshot({ path: output + "/signature-picker-preview.png" });
+  await addSignatureFile("public/examples/fictional-signature.png");
   await page.waitForFunction(
     () => document.querySelectorAll("#signature-list li").length === 2,
   );
   assert.equal(await page.locator("#signature-list li").count(), 2);
+  await assertStationary(secondSignatureLayout, "Adding a second signature");
+  await page.locator("#signature").click();
   await page.locator(".stamp-option").first().click();
-  await tap(300, 690);
+  assert.equal(
+    await page.locator("#signature-tray").evaluate((node) => node.matches(":popover-open")),
+    false,
+    "Choosing a signature closes the picker while keeping the stamp active",
+  );
+  assert.equal(await page.locator("#page").getAttribute("data-tool"), "image");
+  await assertStationary(secondSignatureLayout, "Choosing a signature");
+  await tap(420, 650);
+  await page.locator("#signature").click();
   await page.locator(".stamp-remove").first().click();
   assert.equal(await page.locator("#signature-list li").count(), 1);
   assert.equal(
     await page.locator('#additions [data-kind="image"]').count(),
     2,
-    "Removing a tray stamp must not remove placed copies",
+    "Removing a picker stamp must not remove placed copies",
   );
-  receipt.checks.multi_signature_tray_and_remove = "pass";
+  receipt.checks.multi_signature_picker_and_remove = "pass";
+  await page.keyboard.press("Escape");
+  assert.equal(
+    await page.locator("#signature-tray").evaluate((node) => node.matches(":popover-open")),
+    false,
+    "Escape closes the signature picker",
+  );
   await page.locator('button[data-tool="select"]').click();
   let signature = page
     .locator("#additions [data-object]")
@@ -621,8 +686,9 @@ try {
     [310, 295],
   ]);
   // The chosen stamp stays active after one copy; Select had resized the
-  // previous copy, so reopen the in-memory tray for this page.
+  // previous copy, so reopen the picker and choose a stamp for this page.
   await page.locator("#signature").click();
+  await page.locator(".stamp-option").first().click();
   await tap(175, 560);
   await page.screenshot({ path: output + "/desktop-scan.png" });
   await go(0);

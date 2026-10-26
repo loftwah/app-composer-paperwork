@@ -1,8 +1,15 @@
-import { chromium } from "playwright";
+import { createRequire } from "node:module";
 import { writeFileSync, mkdirSync } from "node:fs";
-mkdirSync("output/touch", { recursive: true });
 import assert from "node:assert/strict";
-const browser = await chromium.launch({ headless: true, channel: "chrome" });
+const require = createRequire(import.meta.url);
+const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
+mkdirSync("output/touch", { recursive: true });
+const browser = await chromium.launch({
+  headless: true,
+  ...(process.env.PLAYWRIGHT_CHROMIUM
+    ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM }
+    : { channel: "chrome" }),
+});
 try {
   const context = await browser.newContext({
       viewport: { width: 390, height: 844 },
@@ -92,8 +99,23 @@ try {
   );
   await p.locator("#workspace").evaluate((el) => (el.scrollTop = 420));
   b = await p.locator("#page").boundingBox();
-  const scale = b.width / 595.2756;
-  await p.touchscreen.tap(b.x + 110 * scale, b.y + 620 * scale);
+  const scale = b.width / 595.2756,
+    stampX = b.x + 110 * scale,
+    stampY = b.y + 620 * scale;
+  await touch("touchStart", [[stampX, stampY]]);
+  await touch("touchMove", [[stampX + 10, stampY + 5]]);
+  const callout = await p.locator("#stamp-callout").boundingBox();
+  assert(callout, "Touch drag must show the lifted signature preview");
+  assert(
+    callout.y + callout.height <= stampY + 8,
+    "The signature preview must not be hidden under the finger",
+  );
+  await p.screenshot({ path: "output/touch/signature-touch-callout.png" });
+  await touch("touchEnd", []);
+  await p.waitForFunction(
+    () => document.querySelectorAll('#additions [data-kind="image"]').length === 1,
+  );
+  await p.locator('button[data-tool="select"]').tap();
   const img = p.locator("#additions image");
   await img.scrollIntoViewIfNeeded();
   let imageBox = await img.boundingBox(),
@@ -126,6 +148,7 @@ try {
     continuous_touch_ink: true,
     select_scroll_without_ink: true,
     two_finger_zoom_without_ink: true,
+    signature_touch_preview: true,
     signature_touch_move_resize: true,
     download: true,
     beforeZoom,

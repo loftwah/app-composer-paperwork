@@ -56,7 +56,9 @@ type SignatureStamp = {
 };
 let signatures: SignatureStamp[] = [],
   selectedSignature = "",
-  signatureTrayOpen = false,
+  signatureScale = 1,
+  signaturePickerOpen = false,
+  signatureSequence = 0,
   previewPoint: Point | undefined;
 let lastSaved = "",
   outputUrl = "",
@@ -207,18 +209,31 @@ const toolNames: Record<string, string> = {
 };
 function syncToolChrome() {
   $("page").dataset.tool = tool;
-  $("context-bar").hidden = tool === "select" && !selected && !focusedField;
+  $("context-bar").hidden =
+    tool === "image" || (tool === "select" && !selected && !focusedField);
   $("active-tool").textContent = toolNames[tool] || "Select";
   for (const el of document.querySelectorAll<HTMLButtonElement>("[data-tool]"))
     if (el.tagName === "BUTTON")
       el.setAttribute("aria-pressed", String(el.dataset.tool === tool));
   $("tool-hint").textContent = hints[tool] || hints.select;
-  const stamp = signatures.find((s) => s.id === selectedSignature);
-  $("stamp-state").hidden = tool !== "image" || !stamp;
-  if (stamp) {
-    $<HTMLImageElement>("stamp-thumb").src = stamp.image;
-    $("stamp-name").textContent = stamp.name;
-  }
+  const stamp = signatures.find((s) => s.id === selectedSignature),
+    thumb = $<HTMLImageElement>("signature-button-thumb"),
+    icon = document.querySelector<SVGElement>("#signature .signature-icon"),
+    signatureButton = button("signature");
+  signatureButton.classList.toggle("has-stamp", !!stamp);
+  signatureButton.setAttribute("aria-pressed", String(tool === "image"));
+  thumb.hidden = !stamp;
+  if (stamp) thumb.src = stamp.image;
+  icon?.toggleAttribute("hidden", !!stamp);
+  signatureButton.title = stamp
+    ? `${stamp.name} selected. Choose or change signature (S)`
+    : "Choose or add a signature stamp (S)";
+  signatureButton.setAttribute(
+    "aria-label",
+    stamp
+      ? `Signature — ${stamp.name}. Choose or change stamp (S)`
+      : "Choose or add a signature stamp (S)",
+  );
 }
 function hasUnexportedEdits() {
   return (
@@ -675,7 +690,7 @@ function setTool(value: string) {
   hidePreview();
   tool = value;
   if (value !== "select") selected = "";
-  if (value !== "image") closeSignatureTray();
+  if (value !== "image") closeSignaturePicker();
   showSelection();
   syncToolChrome();
   drawAdditions();
@@ -950,7 +965,13 @@ function placementFor(kind: Addition["kind"], point: Point): Addition | null {
     item.image = stamp.image;
     Object.assign(
       item,
-      imagePlacement(point, stamp.ratio, viewport.width, viewport.height),
+      imagePlacement(
+        point,
+        stamp.ratio,
+        viewport.width,
+        viewport.height,
+        signatureScale,
+      ),
     );
   } else if (kind === "text") {
     Object.assign(
@@ -969,7 +990,7 @@ function place(point: Point) {
     );
   const kind = tool === "image" ? "image" : tool === "tick" ? "tick" : "text";
   if (kind === "image" && !signatures.some((s) => s.id === selectedSignature))
-    return openSignatureTray();
+    return openSignaturePicker();
   const item = placementFor(kind, point);
   if (!item) return;
   hidePreview();
@@ -1134,8 +1155,32 @@ function hidePreview() {
   previewPoint = undefined;
   previewCircle = undefined;
   aiming = undefined;
+  hideStampCallout();
   const svg = $<HTMLElement>("tool-preview") as unknown as SVGSVGElement;
   svg.replaceChildren();
+}
+function hideStampCallout() {
+  $("stamp-callout").hidden = true;
+}
+function positionStampCallout(event: PointerEvent) {
+  const stamp = signatures.find((s) => s.id === selectedSignature);
+  if (!stamp || tool !== "image") return hideStampCallout();
+  const callout = $("stamp-callout");
+  $<HTMLImageElement>("stamp-callout-image").src = stamp.image;
+  callout.hidden = false;
+  const width = callout.offsetWidth || 160,
+    height = callout.offsetHeight || 64,
+    half = width / 2 + 8,
+    x = Math.max(half, Math.min(innerWidth - half, event.clientX));
+  if (event.clientY - height - 30 < 8) {
+    callout.dataset.side = "below";
+    callout.style.left = `${x}px`;
+    callout.style.top = `${event.clientY + 64}px`;
+  } else {
+    callout.dataset.side = "above";
+    callout.style.left = `${x}px`;
+    callout.style.top = `${event.clientY - 28}px`;
+  }
 }
 function drawPreview() {
   if (!doc) return;
@@ -1206,6 +1251,17 @@ function drawPreview() {
         width: item.w,
         height: item.h,
         preserveAspectRatio: "none",
+      }),
+      el("rect", {
+        x: item.x,
+        y: item.y,
+        width: item.w,
+        height: item.h,
+        fill: "none",
+        stroke: "#c74400",
+        "stroke-width": 1 / zoom,
+        "stroke-dasharray": `${5 / zoom} ${3 / zoom}`,
+        rx: 2 / zoom,
       }),
     );
   } else if (tool === "circle") {
@@ -1342,7 +1398,7 @@ $("page").onpointerdown = (event) => {
   $("page").setPointerCapture(event.pointerId);
   if (["text", "tick", "image", "circle"].includes(tool)) {
     if (tool === "image" && !signatures.some((s) => s.id === selectedSignature))
-      return openSignatureTray();
+      return openSignaturePicker();
     aiming = { id: event.pointerId, start: p, tool };
     previewPoint = p;
     previewCircle =
@@ -1350,6 +1406,7 @@ $("page").onpointerdown = (event) => {
         ? defaultCirclePlacement(p, doc.viewports[pageIndex].width, doc.viewports[pageIndex].height)
         : undefined;
     drawPreview();
+    if (event.pointerType === "touch") positionStampCallout(event);
     return;
   }
   if (
@@ -1398,6 +1455,8 @@ $("page").onpointermove = (event) => {
       ) || undefined;
     }
     drawPreview();
+    if (aiming.tool === "image" && event.pointerType === "touch")
+      positionStampCallout(event);
     return;
   }
   if (!gesture) {
@@ -1473,6 +1532,7 @@ $("page").onpointerleave = () => {
 };
 function endGesture(event: PointerEvent, cancelled = false) {
   pointers.delete(event.pointerId);
+  hideStampCallout();
   if (pinch) {
     if (pointers.size === 0) {
       zoom = Math.max(0.2, Math.min(3, pinch.zoom * pinch.ratio));
@@ -1697,87 +1757,206 @@ for (const [id, action] of [
 }
 headerActions.insertBefore(mobileHistory, button("more-actions"));
 const MAX_SIGNATURES = 6,
-  MAX_SIGNATURE_MEMORY = 20 * 1024 * 1024;
-function closeSignatureTray() {
-  signatureTrayOpen = false;
-  $("signature-tray").hidden = true;
-  button("signature").setAttribute("aria-expanded", "false");
+  MAX_SIGNATURE_MEMORY = 20 * 1024 * 1024,
+  signaturePicker = $("signature-tray");
+function pickerIsOpen() {
+  return signaturePicker.matches(":popover-open");
 }
-function renderSignatureTray() {
-  const list = $("signature-list");
+function closeSignaturePicker(focusButton = false) {
+  if (pickerIsOpen()) signaturePicker.hidePopover();
+  signaturePickerOpen = false;
+  button("signature").setAttribute("aria-expanded", "false");
+  if (focusButton) button("signature").focus({ preventScroll: true });
+}
+function positionSignaturePicker() {
+  if (!pickerIsOpen()) return;
+  if (!matchMedia("(min-width: 701px)").matches) {
+    for (const property of [
+      "left",
+      "top",
+      "right",
+      "width",
+      "max-height",
+      "--caret-x",
+    ])
+      signaturePicker.style.removeProperty(property);
+    signaturePicker.dataset.placement = "below";
+    return;
+  }
+  const margin = 8,
+    rect = button("signature").getBoundingClientRect(),
+    width = Math.min(360, innerWidth - margin * 2);
+  signaturePicker.style.width = `${width}px`;
+  signaturePicker.style.maxHeight = "";
+  signaturePicker.style.left = `${margin}px`;
+  signaturePicker.style.top = `${margin}px`;
+  const height = signaturePicker.getBoundingClientRect().height,
+    left = Math.max(
+      margin,
+      Math.min(rect.left, innerWidth - width - margin),
+    );
+  let top = rect.bottom + 8;
+  signaturePicker.dataset.placement = "below";
+  if (top + height > innerHeight - margin) {
+    const above = rect.top - 8 - height;
+    if (above >= margin) {
+      top = above;
+      signaturePicker.dataset.placement = "above";
+    } else {
+      signaturePicker.style.maxHeight = `${Math.max(180, innerHeight - margin * 2)}px`;
+      top = margin;
+    }
+  }
+  signaturePicker.style.left = `${left}px`;
+  signaturePicker.style.top = `${top}px`;
+  signaturePicker.style.setProperty(
+    "--caret-x",
+    `${Math.max(16, Math.min(width - 16, rect.left + rect.width / 2 - left))}px`,
+  );
+}
+function renderSignaturePicker() {
+  const list = $("signature-list"),
+    stamp = signatures.find((s) => s.id === selectedSignature);
   list.replaceChildren();
-  signatures.forEach((stamp, index) => {
+  signatures.forEach((entry, index) => {
     const item = document.createElement("li"),
       choose = document.createElement("button"),
       remove = document.createElement("button");
     choose.type = "button";
     choose.className = "stamp-option";
-    choose.setAttribute(
-      "aria-pressed",
-      String(stamp.id === selectedSignature),
-    );
-    choose.title = `${stamp.name} — click to stamp`;
+    choose.setAttribute("aria-pressed", String(entry.id === selectedSignature));
+    choose.title = `${entry.name} — use this stamp`;
     choose.onclick = () => {
-      selectedSignature = stamp.id;
-      renderSignatureTray();
+      selectedSignature = entry.id;
+      renderSignaturePicker();
       setTool("image");
-      syncToolChrome();
+      closeSignaturePicker();
+      $("page").focus({ preventScroll: true });
       status(
-        `${stamp.name} selected. Click or press-drag-release on the page to stamp; choose Select to resize.`,
+        `${entry.name} selected. Move over the page and click or press-drag-release to stamp; Select moves or resizes a placed copy.`,
       );
     };
     const image = document.createElement("img");
-    image.src = stamp.image;
+    image.src = entry.image;
     image.alt = "";
     const label = document.createElement("span");
-    label.textContent = stamp.name;
+    label.textContent = entry.name;
     choose.append(image, label);
     remove.type = "button";
     remove.className = "stamp-remove";
-    remove.textContent = "Remove";
-    remove.setAttribute("aria-label", `Remove ${stamp.name} from the tray`);
+    remove.textContent = "×";
+    remove.title = `Remove ${entry.name} from the picker`;
+    remove.setAttribute("aria-label", `Remove ${entry.name} from the picker`);
     remove.onclick = () => {
-      if (selectedSignature === stamp.id)
-        selectedSignature = signatures[index + 1]?.id || signatures[index - 1]?.id || "";
-      signatures = signatures.filter((s) => s.id !== stamp.id);
-      renderSignatureTray();
-      if (!signatures.length && tool === "image") setTool("select");
+      if (selectedSignature === entry.id)
+        selectedSignature =
+          signatures[index + 1]?.id || signatures[index - 1]?.id || "";
+      signatures = signatures.filter((s) => s.id !== entry.id);
+      renderSignaturePicker();
       syncToolChrome();
+      if (!signatures.length && tool === "image") setTool("select");
+      else if (signatures.length)
+        document
+          .querySelector<HTMLButtonElement>(".stamp-option")
+          ?.focus({ preventScroll: true });
       status(
-        "Removed from the tray. Stamps already placed on the page are unchanged.",
+        "Removed from the picker. Stamps already placed on the page are unchanged.",
       );
     };
     item.append(choose, remove);
     list.append(item);
   });
-  const empty = $("signature-empty");
-  empty.hidden = signatures.length > 0;
+  $("signature-empty").hidden = signatures.length > 0;
+  $("signature-list").hidden = signatures.length === 0;
   $("signature-count").textContent = `${signatures.length} of ${MAX_SIGNATURES}`;
-}
-function openSignatureTray() {
-  if (!signatures.length) {
-    $<HTMLInputElement>("signature-file").click();
-    return;
+  $("signature-preview").hidden = !stamp;
+  if (stamp) {
+    $<HTMLImageElement>("signature-preview-image").src = stamp.image;
+    $("signature-preview-name").textContent = stamp.name;
   }
-  if (!selectedSignature) selectedSignature = signatures[0].id;
-  setTool("image");
-  signatureTrayOpen = true;
-  $("signature-tray").hidden = false;
-  button("signature").setAttribute("aria-expanded", "true");
-  renderSignatureTray();
-  syncToolChrome();
-  document.querySelector<HTMLButtonElement>(".stamp-option")?.focus();
+  for (const control of document.querySelectorAll<HTMLButtonElement>(
+    "[data-stamp-scale]",
+  ))
+    control.setAttribute(
+      "aria-pressed",
+      String(
+        Math.abs(
+          signatureScale - Number(control.dataset.stampScale),
+        ) < 0.001,
+      ),
+    );
+  button("add-signature").disabled = signatures.length >= MAX_SIGNATURES;
 }
-button("signature").onclick = () => {
-  if (signatureTrayOpen) closeSignatureTray();
-  else openSignatureTray();
-};
+function focusSignaturePicker() {
+  requestAnimationFrame(() => {
+    const focusTarget =
+      signatures.find((s) => s.id === selectedSignature) &&
+      document.querySelector<HTMLButtonElement>(".stamp-option");
+    (focusTarget || button("add-signature")).focus({ preventScroll: true });
+  });
+}
+function openSignaturePicker() {
+  if (!selectedSignature && signatures.length)
+    selectedSignature = signatures[0].id;
+  syncToolChrome();
+  if (!pickerIsOpen()) {
+    try {
+      signaturePicker.showPopover();
+    } catch {
+      // The toggle handler still reflects the open state in old engines.
+    }
+  }
+  signaturePickerOpen = true;
+  button("signature").setAttribute("aria-expanded", "true");
+}
+signaturePicker.addEventListener("toggle", (event) => {
+  const open = (event as Event & { newState?: string }).newState === "open";
+  signaturePickerOpen = open;
+  button("signature").setAttribute("aria-expanded", String(open));
+  if (open) {
+    renderSignaturePicker();
+    positionSignaturePicker();
+    focusSignaturePicker();
+  } else {
+    hideStampCallout();
+  }
+});
+window.addEventListener("resize", () => {
+  if (pickerIsOpen()) positionSignaturePicker();
+});
+// A tap meant to dismiss the picker must not also stamp the document.
+document.addEventListener(
+  "pointerdown",
+  (event) => {
+    if (!signaturePickerOpen) return;
+    const target = event.target as Node;
+    if (
+      signaturePicker.contains(target) ||
+      button("signature").contains(target)
+    )
+      return;
+    if ($("page").contains(target)) {
+      event.preventDefault();
+      event.stopPropagation();
+      closeSignaturePicker();
+    }
+  },
+  true,
+);
+// The Signature button is a native popover invoker: clicking it toggles the
+// picker, and choosing a stamp is what activates the stamp tool.
 button("add-signature").onclick = () =>
   $<HTMLInputElement>("signature-file").click();
-button("close-signature-tray").onclick = () => {
-  closeSignatureTray();
-  button("signature").focus();
-};
+button("close-signature-tray").onclick = () => closeSignaturePicker(true);
+for (const control of document.querySelectorAll<HTMLButtonElement>(
+  "[data-stamp-scale]",
+)) {
+  control.onclick = () => {
+    signatureScale = Number(control.dataset.stampScale) || 1;
+    renderSignaturePicker();
+    if (pickerIsOpen()) positionSignaturePicker();
+  };
+}
 function readAsDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -1838,7 +2017,7 @@ $<HTMLInputElement>("signature-file").onchange = async (event) => {
     return status("Choose a PNG signature smaller than 5 MB.", true);
   if (signatures.length >= MAX_SIGNATURES)
     return status(
-      `The tray holds ${MAX_SIGNATURES} signatures. Remove one before adding another.`,
+      `The picker holds ${MAX_SIGNATURES} signatures. Remove one before adding another.`,
       true,
     );
   if (
@@ -1846,7 +2025,7 @@ $<HTMLInputElement>("signature-file").onchange = async (event) => {
     MAX_SIGNATURE_MEMORY
   )
     return status(
-      "The signature tray is full. Remove a signature before adding another.",
+      "The signature picker is full. Remove a signature before adding another.",
       true,
     );
   try {
@@ -1858,24 +2037,23 @@ $<HTMLInputElement>("signature-file").onchange = async (event) => {
       h = view.getUint32(20);
     if (!w || !h || w * h > 8_000_000 || w > 8192 || h > 8192)
       throw Error("Use a PNG signature up to 8 million pixels.");
-    const trimmed = await trimmedSignature(file);
-    const stamp: SignatureStamp = {
-      id: crypto.randomUUID(),
-      name: `Signature ${signatures.length + 1}`,
-      image: trimmed.image,
-      ratio: trimmed.ratio,
-      bytes: file.size,
-    };
+    const trimmed = await trimmedSignature(file),
+      stamp: SignatureStamp = {
+        id: crypto.randomUUID(),
+        name: `Signature ${++signatureSequence}`,
+        image: trimmed.image,
+        ratio: trimmed.ratio,
+        bytes: file.size,
+      };
     signatures.push(stamp);
     selectedSignature = stamp.id;
-    renderSignatureTray();
+    renderSignaturePicker();
     setTool("image");
-    signatureTrayOpen = true;
-    $("signature-tray").hidden = false;
-    button("signature").setAttribute("aria-expanded", "true");
+    closeSignaturePicker();
     syncToolChrome();
+    $("page").focus({ preventScroll: true });
     status(
-      "Signature added. Click or press-drag-release on the page to stamp it; the tray keeps it for this tab only.",
+      "Signature added and selected. Move over the page and click or press-drag-release to stamp; the picker keeps it for this tab only.",
     );
   } catch (e) {
     status(
@@ -2088,9 +2266,8 @@ window.addEventListener("keydown", (event) => {
     return;
   }
   if (event.key === "Escape") {
-    if (signatureTrayOpen) {
-      closeSignatureTray();
-      button("signature").focus();
+    if (pickerIsOpen() || signaturePickerOpen) {
+      closeSignaturePicker(true);
       return;
     }
     selected = "";
@@ -2111,8 +2288,11 @@ window.addEventListener("keydown", (event) => {
     event.preventDefault();
     setTool(tools[event.key.toLowerCase()]);
   }
-  if (event.key.toLowerCase() === "s" && !event.ctrlKey && !event.metaKey)
-    openSignatureTray();
+  if (event.key.toLowerCase() === "s" && !event.ctrlKey && !event.metaKey) {
+    event.preventDefault();
+    if (pickerIsOpen()) closeSignaturePicker(true);
+    else openSignaturePicker();
+  }
   if ((event.key === "Delete" || event.key === "Backspace") && selected) {
     event.preventDefault();
     removeSelected();

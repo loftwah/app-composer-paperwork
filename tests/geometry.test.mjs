@@ -88,6 +88,26 @@ test("default circle and image placement stay inside the page and preserve ratio
   assert(image.y + image.h <= 300.0001);
 });
 
+test("new-stamp size scales initial bounds without changing proportions or leaving the page", () => {
+  const ratio = 3.3693,
+    small = imagePlacement({ x: 300, y: 400 }, ratio, 595, 842, 0.7),
+    medium = imagePlacement({ x: 300, y: 400 }, ratio, 595, 842, 1),
+    large = imagePlacement({ x: 300, y: 400 }, ratio, 595, 842, 1.45);
+  assert(small.w < medium.w && medium.w < large.w);
+  assert(large.w > small.w * 1.8);
+  for (const box of [small, medium, large]) {
+    assert(Math.abs(box.w / box.h - ratio) < 1e-9);
+    assert(box.x >= 0 && box.y >= 0);
+    assert(box.x + box.w <= 595.0001);
+    assert(box.y + box.h <= 842.0001);
+  }
+  const edge = imagePlacement({ x: 1, y: 841 }, ratio, 595, 842, 1.45);
+  assert(edge.x >= 0 && edge.y >= 0);
+  assert(edge.x + edge.w <= 595.0001);
+  assert(edge.y + edge.h <= 842.0001);
+  assert(Math.abs(edge.w / edge.h - ratio) < 1e-9);
+});
+
 test("text selection hugs rendered rows, not the 190pt layout width", () => {
   const item = { x: 30, y: 40, w: 190, h: 50, size: 14, text: "Yes" },
     bounds = textVisualBounds(item, ["Yes"], (text, size) => text.length * size * 0.55);

@@ -1,8 +1,10 @@
 // Awkward-widget interoperability check for the synthetic #264 fixture.
 // Run after `pnpm build`: node scripts/awkward-fields-check.mjs
 // It never sends the document anywhere; the browser is local and the fixture is fictional.
-import { chromium } from "playwright";
 import { createServer } from "node:http";
+import { createRequire } from "node:module";
+const require = createRequire(import.meta.url);
+const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { PDFDocument, PDFName, PDFNumber, decodePDFRawStream } from "pdf-lib";
 import path from "node:path";
@@ -53,7 +55,12 @@ const receipt = {
 };
 const appearanceBytes = (stream) =>
   Buffer.from(decodePDFRawStream(stream).decode());
-const browser = await chromium.launch({ headless: true, channel: "chrome" });
+const browser = await chromium.launch({
+  headless: true,
+  ...(process.env.PLAYWRIGHT_CHROMIUM
+    ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM }
+    : { channel: "chrome" }),
+});
 try {
   receipt.browser = browser.version();
   const context = await browser.newContext({

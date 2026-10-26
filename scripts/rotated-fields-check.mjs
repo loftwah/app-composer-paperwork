@@ -1,5 +1,7 @@
-import { chromium } from "playwright";
 import { PDFDocument, degrees } from "pdf-lib";
+import { createRequire } from "node:module";
+const require = createRequire(import.meta.url);
+const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import {
   readFileSync,
@@ -15,7 +17,12 @@ const ownedRoot = mkdtempSync(path.join(tmpdir(), "paperwork-rotated-fields-"));
 let browser;
 mkdirSync("output/rotated-fields", { recursive: true });
 try {
-  browser = await chromium.launch({ headless: true, channel: "chrome" });
+  browser = await chromium.launch({
+    headless: true,
+    ...(process.env.PLAYWRIGHT_CHROMIUM
+      ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM }
+      : { channel: "chrome" }),
+  });
   const page = await browser.newPage({
     viewport: { width: 1440, height: 1000 },
     acceptDownloads: true,
