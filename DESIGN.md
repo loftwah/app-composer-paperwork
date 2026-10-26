@@ -33,9 +33,12 @@ soon as a stamp is chosen while the compact Signature control keeps the
 selected image visible. It holds multiple PNGs; removing a picker stamp leaves
 placed copies. The placement ghost is the actual image with a tight dashed
 frame, so hover and touch show the committed bounds. Touch press-drag-release
-adds a lifted preview above the finger. Tool hints, ink options and text
-controls float directly below the toolbar over the canvas, so selecting an
-addition or changing tools does not move the document. The header
+adds a lifted preview above the finger. A fixed-height tool strip always sits
+below the toolbar; the page starts below it. Switching Select, Eraser, Tick or
+another tool changes the strip's contents, not its height or the document's
+position. The page bar stays fixed at the bottom; the workspace still scrolls
+within the page. Text editing controls float over the canvas only while
+editing. The header
 keeps a persistent document state (Ready, Changes not downloaded, Creating PDF,
 PDF downloaded, PDF ready to print, Couldn’t finish—edits safe); tool state and
 operation feedback are separate. Errors stay until dismissed or resolved.

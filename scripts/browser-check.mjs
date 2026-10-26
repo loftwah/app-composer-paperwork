@@ -247,7 +247,8 @@ try {
     desktopSpace.height / desktopSpace.viewport >= 0.8,
     "Desktop document should own at least 80% of the viewport",
   );
-  assert.equal(await page.locator(".context-bar").isVisible(), false);
+  assert.equal(await page.locator(".context-bar").isVisible(), true);
+  assert.equal(await page.locator("#active-tool").textContent(), "Select");
   assert.equal(await page.locator("footer").isVisible(), false);
   await page.locator('button[data-tool="pen"]').click();
   assert.equal(await page.locator(".context-bar").isVisible(), true);

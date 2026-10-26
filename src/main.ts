@@ -209,8 +209,7 @@ const toolNames: Record<string, string> = {
 };
 function syncToolChrome() {
   $("page").dataset.tool = tool;
-  $("context-bar").hidden =
-    tool === "image" || (tool === "select" && !selected && !focusedField);
+  $("context-bar").hidden = false;
   $("active-tool").textContent = toolNames[tool] || "Select";
   for (const el of document.querySelectorAll<HTMLButtonElement>("[data-tool]"))
     if (el.tagName === "BUTTON")
