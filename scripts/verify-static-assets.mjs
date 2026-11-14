@@ -45,6 +45,13 @@ export async function verifyStaticAssets({
           )
             throw Error("static CSP boundary missing");
           if (
+            asset.mediaCsp &&
+            !/(?:^|;)\s*media-src 'self'\s*(?:;|$)/.test(
+              response.headers.get("content-security-policy") ?? "",
+            )
+          )
+            throw Error("same-origin media CSP missing");
+          if (
             asset.csp &&
             !response.headers.get("cache-control")?.includes("no-transform")
           )

@@ -36,3 +36,18 @@ a:focus-visible {
 p {
   color: #c6c8cf;
 }
+.studio-study {
+  margin: 1.5rem 0 2rem;
+}
+.studio-study video {
+  display: block;
+  width: min(100%, 20rem);
+  height: auto;
+  aspect-ratio: 4 / 5;
+  background: #202124;
+}
+.studio-study figcaption {
+  max-width: 48ch;
+  margin-top: 0.75rem;
+  color: #c6c8cf;
+}

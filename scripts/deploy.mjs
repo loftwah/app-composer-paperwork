@@ -64,6 +64,8 @@ const paths = [
   "/help.html",
   "/canonical.js",
   "/artwork/press-20261024.webp",
+  "/artwork/paper-bench-motion-20261114.webp",
+  "/artwork/paper-bench-motion-20261114.mp4",
   "/social/paperwork-20261024.png",
   "/icons/paperwork-48-20261024.png",
   "/icons/paperwork-180-20261024.png",
@@ -79,7 +81,9 @@ const verified = await verifyStaticAssets({
     bytes: readFileSync(path === "/" ? "dist/index.html" : "dist" + path),
     ...(path.endsWith(".png") ? { type: "image/png" } : {}),
     ...(path.endsWith(".webp") ? { type: "image/webp" } : {}),
+    ...(path.endsWith(".mp4") ? { type: "video/mp4" } : {}),
     ...(path === "/" || path === "/help.html" ? { csp: true } : {}),
+    ...(path === "/help.html" ? { mediaCsp: true } : {}),
   })),
 });
 console.log(

@@ -7,6 +7,13 @@ const redirect = readFileSync(
   new URL("../public/canonical.js", import.meta.url),
   "utf8",
 );
+test("the illustrated clip stays same-origin under Paperwork's private CSP", () => {
+  const headers = readFileSync(new URL("../public/_headers", import.meta.url), "utf8");
+  const csp = headers.split("\n").find((line) => line.includes("Content-Security-Policy:"));
+  assert.match(csp, /(?:^|;)\s*media-src 'self';/);
+  assert.match(csp, /(?:^|;)\s*connect-src 'self' blob:;/);
+  assert.match(csp, /(?:^|:)\s*default-src 'none';/);
+});
 test("existing Workers page links retain their path, sample and fragment at the public domain", () => {
   let destination;
   const href =
@@ -73,4 +80,17 @@ test("domain verification requires unchanged HTML with transformation protection
     ),
     /SHA-256 differs/,
   );
+});
+test("release verification refuses a help page whose CSP blocks the motion study", async () => {
+  const { verifyStaticAssets } = await import("../scripts/verify-static-assets.mjs");
+  const bytes = Buffer.from("help");
+  const check = (csp) => verifyStaticAssets({
+    origin: "https://paperwork.loftwah.com", attempts: 1,
+    assets: [{ path: "/help.html", bytes, csp: true, mediaCsp: true }],
+    fetchImpl: async () => new Response(bytes, { headers: {
+      "Content-Security-Policy": csp, "Cache-Control": "no-transform",
+    } }),
+  });
+  await assert.rejects(check("default-src 'none'; connect-src 'self';"), /same-origin media CSP/);
+  await check("default-src 'none'; connect-src 'self'; media-src 'self';");
 });

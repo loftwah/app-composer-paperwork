@@ -262,6 +262,14 @@ body:not(.has-document) .header-actions :is(#open, #save, #print) {
   font-size: 12px;
   margin-top: 22px;
 }
+.start .studio-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
 .ink-underline {
   text-decoration: underline;
   text-decoration-color: var(--accent);
