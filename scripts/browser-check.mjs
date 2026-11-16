@@ -1213,12 +1213,19 @@ try {
 } catch (error) {
   receipt.failure = error.stack;
   if (activePage) {
-    receipt.state = await activePage.evaluate(() => ({
-      status: document.querySelector("#status").textContent,
-      page: document.querySelector("#page").outerHTML.slice(0, 400),
-      selection: document.querySelector("#page-number").value,
-    }));
-    await activePage.screenshot({ path: output + "/failure.png" });
+    // Diagnostics are best-effort: a crashed/closed page makes evaluate/screenshot
+    // throw, which must not mask the original failure or its exit code.
+    try {
+      receipt.state = await activePage.evaluate(() => ({
+        status: document.querySelector("#status").textContent,
+        page: document.querySelector("#page").outerHTML.slice(0, 400),
+        selection: document.querySelector("#page-number").value,
+      }));
+      await activePage.screenshot({ path: output + "/failure.png" });
+    } catch (diagnosticError) {
+      receipt.diagnostics_unavailable =
+        diagnosticError?.message || String(diagnosticError);
+    }
   }
   console.error(error);
   process.exitCode = 1;
