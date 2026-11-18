@@ -11,6 +11,7 @@ import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import path from "node:path";
 import assert from "node:assert/strict";
+import { createOwnedCleanup } from "./lib/owned-cleanup.mjs";
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 const output = path.resolve(
@@ -63,34 +64,54 @@ const server = createServer((request, response) => {
     );
   response.end(readFileSync(file));
 });
-await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-const localOrigin = `http://127.0.0.1:${server.address().port}`,
-  origin = process.env.PAPERWORK_ORIGIN || localOrigin;
-const browser = await chromium.launch({
-  headless: true,
-  ...(process.env.PLAYWRIGHT_CHROMIUM
-    ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM }
-    : { channel: "chrome" }),
-});
-const receipt = {
-  source_sha: (() => {
+
+// The browser and this local server belong to this run. Node's default
+// SIGINT/SIGTERM exit skips `finally`, so install bounded handlers before either
+// is started; Playwright's own signal handlers are disabled on launch below so
+// they cannot close the browser before this cleanup runs.
+let browser;
+let pendingLaunch;
+const teardown = async () => {
+  const failures = [];
+  const attempt = async (step) => {
     try {
-      return require("node:child_process")
-        .execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" })
-        .trim();
-    } catch {
-      return "";
+      await step();
+    } catch (error) {
+      failures.push(error);
     }
-  })(),
-  origin,
-  browser: browser.version(),
-  checks: {},
-  layout_deltas: {},
-  known_limitations: [
-    "Touch-browser emulation, not a physical iPhone or stylus.",
-    "The export was reopened through the public app; independent reader and print evidence are recorded separately.",
-  ],
+  };
+  // A signal can arrive while the browser is still launching. Settle that
+  // launch first so its profile is owned before the close steps run.
+  if (pendingLaunch) {
+    try {
+      browser = await pendingLaunch;
+    } catch {
+      // A failed launch leaves no browser. Preserve its original error.
+    }
+    pendingLaunch = undefined;
+  }
+  await attempt(() => browser?.close());
+  await attempt(
+    () =>
+      new Promise((resolve, reject) => {
+        server.close((error) =>
+          error && error.code !== "ERR_SERVER_NOT_RUNNING"
+            ? reject(error)
+            : resolve(),
+        );
+        // Chrome keeps sockets alive; waiting for them would block teardown
+        // when a browser could not be closed.
+        server.closeAllConnections?.();
+      }),
+  );
+  if (failures.length)
+    throw new AggregateError(failures, "Signature-check cleanup failed");
 };
+const owned = createOwnedCleanup(teardown);
+owned.install();
+
+let origin;
+let receipt;
 const boxes = async (page) =>
   page.evaluate(() => {
     const rect = (selector) => {
@@ -836,6 +857,46 @@ async function phoneJourney() {
 }
 
 try {
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.removeListener("error", reject);
+      resolve();
+    });
+  });
+  const localOrigin = `http://127.0.0.1:${server.address().port}`;
+  origin = process.env.PAPERWORK_ORIGIN || localOrigin;
+  pendingLaunch = chromium.launch({
+    headless: true,
+    ...(process.env.PLAYWRIGHT_CHROMIUM
+      ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM }
+      : { channel: "chrome" }),
+    // This module owns SIGINT/SIGTERM teardown; Playwright's default handlers
+    // would close the browser and exit before our cleanup ran.
+    handleSIGINT: false,
+    handleSIGTERM: false,
+  });
+  browser = await pendingLaunch;
+  pendingLaunch = undefined;
+  receipt = {
+    source_sha: (() => {
+      try {
+        return require("node:child_process")
+          .execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" })
+          .trim();
+      } catch {
+        return "";
+      }
+    })(),
+    origin,
+    browser: browser.version(),
+    checks: {},
+    layout_deltas: {},
+    known_limitations: [
+      "Touch-browser emulation, not a physical iPhone or stylus.",
+      "The export was reopened through the public app; independent reader and print evidence are recorded separately.",
+    ],
+  };
   await desktopJourney();
   await phoneJourney();
   writeFileSync(
@@ -844,6 +905,12 @@ try {
   );
   console.log(JSON.stringify(receipt, null, 2));
 } finally {
-  await browser.close();
-  server.close();
+  // Normal completion and thrown errors drain the same bounded teardown the
+  // signal handler uses. Keep the listeners installed until it settles so a
+  // signal during cleanup cannot restore Node's immediate default exit.
+  try {
+    await owned.clean();
+  } finally {
+    owned.uninstall();
+  }
 }
