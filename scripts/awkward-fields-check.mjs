@@ -60,7 +60,7 @@ const receipt = {
 let base;
 let browser;
 let pendingLaunch;
-let completed = false;
+let checksFinished = false;
 const teardown = async () => {
   const failures = [];
   const attempt = async (step) => {
@@ -98,7 +98,7 @@ const teardown = async () => {
   // are recorded on normal exit, thrown errors and signals alike.
   await attempt(() => {
     receipt.pass =
-      completed &&
+      checksFinished &&
       failures.length === 0 &&
       !receipt.interrupted &&
       Object.values(receipt.checks).every((value) => value === "pass");
@@ -289,7 +289,7 @@ try {
   receipt.checks.negative_tab_keeps_completed_document_open = "pass";
   assert.deepEqual(errors, []);
   receipt.checks.no_page_errors = "pass";
-  completed = true;
+  checksFinished = true;
 } finally {
   // Normal completion and thrown errors drain the same bounded teardown the
   // signal handler uses. Keep the listeners installed until it settles so a
