@@ -417,7 +417,7 @@ export function createReleaseRun({
     const payload = {
       title: firstEditMs === null
         ? alertTitle(bottleneck)
-        : "[DELIVERY SLA] First edit → exact live identity reached the 300s limit",
+        : `[DELIVERY SLA] ${repo} · First edit → exact live identity reached the 300s limit`,
       body: issueBody({
         receipt: completedReceipt ?? snapshot("over-budget"), fingerprint, bottleneck,
         now: wallClock(), firstEditMs,
@@ -457,7 +457,7 @@ export function createReleaseRun({
   };
 
   const alertTitle = (bottleneck = bottleneckStage()) =>
-    `[DELIVERY SLA] Routine release exceeded 300s — ${bottleneck}`;
+    `[DELIVERY SLA] ${repo} · Routine release exceeded 300s — ${bottleneck}`;
 
   const snapshot = (status = "running") => {
     const measured = stages.reduce((value, stage) => value + (Number(stage.durationMs) || 0), 0);
@@ -621,7 +621,7 @@ export async function reportStuckRun({ stuck, github, logger = console }) {
     bottleneck: "run did not finish",
   });
   const payload = {
-    title: `[DELIVERY SLA] Release run did not finish — ${stuck.releasePath}`,
+    title: `[DELIVERY SLA] ${stuck.repo} · Release run did not finish — ${stuck.releasePath}`,
     body: `<!-- ${MARKER_PREFIX}${fingerprint} -->
 ## Release run did not finish within 300s
 
