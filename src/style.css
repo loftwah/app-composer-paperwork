@@ -262,6 +262,41 @@ body:not(.has-document) .header-actions :is(#open, #save, #print) {
   font-size: 12px;
   margin-top: 22px;
 }
+.import-help {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 0 0 24px;
+  padding: 14px;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.import-help[hidden] {
+  display: none;
+}
+.import-help img {
+  width: 76px;
+  height: 76px;
+  object-fit: cover;
+  border-radius: 6px;
+  flex: none;
+}
+.import-help strong {
+  display: block;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+.import-help p {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted);
+  margin: 0 0 10px;
+}
+.import-help button {
+  min-height: 44px;
+  padding: 6px 14px;
+}
 .start .studio-link {
   display: inline-flex;
   align-items: center;

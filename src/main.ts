@@ -156,7 +156,8 @@ button("clear-field").addEventListener(
 function syncChrome() {
   document.body.classList.toggle("has-document", !!doc);
   syncActionPlacement();
-  for (const id of ["open", "start-open", "sample"]) button(id).disabled = busy;
+  for (const id of ["open", "start-open", "sample", "import-help-sample"])
+    button(id).disabled = busy;
   button("save").disabled = button("print").disabled = !doc || busy;
   button("properties").disabled = !doc || busy;
   button("save").textContent = busy && doc ? "Preparing…" : "Save PDF";
@@ -398,10 +399,12 @@ button("confirm-replace").onclick = () => {
 for (const id of ["open", "start-open"])
   button(id).onclick = () =>
     requestOpen(() => $<HTMLInputElement>("pdf-file").click());
-button("sample").onclick = () =>
+const openSample = () =>
   requestOpen(() => {
     void loadSample();
   });
+button("sample").onclick = openSample;
+button("import-help-sample").onclick = openSample;
 $<HTMLInputElement>("pdf-file").onchange = async (event) => {
   const input = event.target as HTMLInputElement,
     file = input.files?.[0];
@@ -419,14 +422,20 @@ async function loadSample(lab = false) {
     );
     await load(bytes, lab ? "Paperwork Lab.pdf" : "Garden form.pdf");
   } catch {
-    status("The sample could not load. Try opening a local PDF.", true);
+    showOpenError("The sample could not load. Try opening a local PDF.");
   }
+}
+function showOpenError(message: string) {
+  if (!doc) {
+    $("import-help-message").textContent = message;
+    $("import-help").hidden = false;
+  }
+  status(message, true);
 }
 async function loadFile(file: File) {
   if (file.size > LIMITS.bytes)
-    return status(
+    return showOpenError(
       "Choose a PDF smaller than 30 MB. Your current work is still here.",
-      true,
     );
   await load(new Uint8Array(await file.arrayBuffer()), file.name);
 }
@@ -451,6 +460,7 @@ async function load(bytes: Uint8Array, name: string) {
     revokeOutput();
     hidePreview();
     $("welcome").hidden = true;
+    $("import-help").hidden = true;
     $("editor").hidden = false;
     $("filename").textContent = name;
     $("filename").title = name;
@@ -470,12 +480,11 @@ async function load(bytes: Uint8Array, name: string) {
         `${next.viewports.length} pages ready. Fill a field or choose a tool.`,
     );
   } catch (e) {
-    status(
+    const message =
       e instanceof Error
         ? e.message
-        : "This PDF could not be opened. Your current work is still here.",
-      true,
-    );
+        : "This PDF could not be opened. Your current work is still here.";
+    showOpenError(message);
   } finally {
     busy = false;
     syncChrome();
