@@ -13,16 +13,70 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import assert from "node:assert/strict";
-const ownedRoot = mkdtempSync(path.join(tmpdir(), "paperwork-rotated-fields-"));
-let browser;
+import { createOwnedCleanup } from "./lib/owned-cleanup.mjs";
+
 mkdirSync("output/rotated-fields", { recursive: true });
+const ownedRoot = mkdtempSync(path.join(tmpdir(), "paperwork-rotated-fields-"));
+
+// Track the launch so a signal arriving mid-launch still owns the browser that
+// resolves from it. Handlers are installed before launch: Node's default
+// SIGINT/SIGTERM exit skips `finally` and would strand the browser and the
+// temporary PDF variants this run created.
+let browser;
+let pendingLaunch;
+const teardown = async () => {
+  const failures = [];
+  if (pendingLaunch) {
+    try {
+      browser = await pendingLaunch;
+    } catch {
+      // A failed launch leaves no browser. Preserve its original error.
+    }
+    pendingLaunch = undefined;
+  }
+  if (browser) {
+    try {
+      await browser.close();
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  // Remove the exact root allocated for this run.
+  try {
+    rmSync(ownedRoot, { recursive: true, force: true });
+  } catch (error) {
+    failures.push(error);
+  }
+  if (failures.length)
+    throw new AggregateError(failures, "Rotated-fields cleanup failed");
+  // The validation completion marker is written only after the owned browser
+  // closed and the owned root was removed, on normal exit, errors and signals.
+  if (process.env.LOFTWAH_VALIDATION_COMPLETION)
+    writeFileSync(
+      process.env.LOFTWAH_VALIDATION_COMPLETION,
+      JSON.stringify({
+        version: 1,
+        generation: process.env.LOFTWAH_VALIDATION_GENERATION,
+        cleanup: "complete",
+      }),
+    );
+};
+const owned = createOwnedCleanup(teardown);
+owned.install();
+
 try {
-  browser = await chromium.launch({
+  pendingLaunch = chromium.launch({
     headless: true,
     ...(process.env.PLAYWRIGHT_CHROMIUM
       ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM }
       : { channel: "chrome" }),
+    // This module owns SIGINT/SIGTERM teardown; Playwright's default handlers
+    // would close the browser and exit before our cleanup ran.
+    handleSIGINT: false,
+    handleSIGTERM: false,
   });
+  browser = await pendingLaunch;
+  pendingLaunch = undefined;
   const page = await browser.newPage({
     viewport: { width: 1440, height: 1000 },
     acceptDownloads: true,
@@ -104,15 +158,12 @@ try {
   );
   console.log("90° and 270° native widget bounds and actual downloads pass.");
 } finally {
-  await browser?.close();
-  rmSync(ownedRoot, { recursive: true, force: true });
-  if (process.env.LOFTWAH_VALIDATION_COMPLETION)
-    writeFileSync(
-      process.env.LOFTWAH_VALIDATION_COMPLETION,
-      JSON.stringify({
-        version: 1,
-        generation: process.env.LOFTWAH_VALIDATION_GENERATION,
-        cleanup: "complete",
-      }),
-    );
+  // Normal completion and thrown errors drain the same bounded teardown the
+  // signal handler uses. Keep the listeners installed until it settles so a
+  // signal during cleanup cannot restore Node's immediate default exit.
+  try {
+    await owned.clean();
+  } finally {
+    owned.uninstall();
+  }
 }
