@@ -62,17 +62,23 @@ for (const page of ["index.html"]) {
   });
 }
 
-test("the local Apps menu controller is the reviewed Composer distribution with LDraw", () => {
+test("the local Apps menu controller is the reviewed Composer distribution with Edit images and LDraw", () => {
   const launcher = readFileSync("public/brand/launcher.js");
   assert.equal(
     createHash("sha256").update(launcher).digest("hex"),
-    "c952399adeb5fc8bfa8f7916222d2c57c1e792b2164807cb9b80592bd520c3cb",
+    "fbc03f8bb08a1a5bd2f7fa397c90dfa0c0fb8a6523618c6bcc65a2c858ab5b4a",
     "public/brand/launcher.js must be the reviewed Composer distribution",
   );
   const code = launcher.toString("utf8");
   assert.match(
     code,
-    /\{ name: "LDraw", href: "https:\/\/ldraw\.loftwah\.com\/", image: "apps\/ldraw-tile-c9c2339a1296-d2e0dc4b-r2-96\.webp", standaloneOnly: true, explainer: "\/ldraw", description: "Editable diagrams, PNG and SVG", keywords: "draw drawing diagram excalidraw scene png svg local offline" \}/,
+    /\{ name: "Edit images", description: "Media Studio Image Tools\. Resize, crop and convert images on this device\.", keywords: "image images workbench resize crop convert inspect photo jpeg png webp local browser", aliases: \["image workbench", "image editor", "edit images", "browser-local image", "image tools", "images", "resize image", "crop image", "convert image"\], audience: "public", group: "apps", href: "https:\/\/media\.loftwah\.com\/tools\/images", icon: "tool" \}/,
+    "the reviewed distribution offers the Edit images task at its canonical destination",
+  );
+  assert.match(
+    code,
+    /\{ name: "LDraw", description: "Draw and save editable diagrams locally, then export PNG or SVG\.", keywords: "draw drawing diagram excalidraw scene png svg local offline", aliases: \["draw", "diagram", "drawing"\], audience: "public", group: "apps", href: "https:\/\/ldraw\.loftwah\.com\/", image: "apps\/ldraw-tile-fa7a2ab6171c-010cfbd2-r2-96\.webp", catalogue: "ldraw" \}/,
+    "the reviewed distribution keeps the local LDraw destination and tile",
   );
   for (const pattern of [
     /event\.key === "Escape"/,
