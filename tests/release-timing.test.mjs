@@ -129,6 +129,7 @@ test("a breach alerts while the run is still running", async (t) => {
   });
   assert.equal(github.issues.length, 1);
   assert.equal(run.alertState, "created");
+  assert.equal(github.issues[0].title, "[DELIVERY SLA] loftwah/example · Routine release exceeded 300s — upload");
   await run.stage("live verification", async () => clock.advance(10));
   await run.finish({ liveRevision: SHA });
   assert.equal(github.issues.length, 1, "one issue per bottleneck");
@@ -334,6 +335,7 @@ test("a stale running receipt is found and reported, never treated as a pass", a
   assert.equal(stuck[0].sha, SHA);
   const github = fakeGitHub();
   assert.equal(await reportStuckRun({ stuck: stuck[0], github, logger: { error() {} } }), "created");
+  assert.equal(github.issues[0].title, "[DELIVERY SLA] loftwah/example · Release run did not finish — scripts/deploy.mjs");
   assert.equal(github.issues.length, 1);
   assert.match(github.issues[0].title, /did not finish/);
 });
@@ -502,7 +504,7 @@ for (const [label, firstEditToLiveMs, expectedAlerts] of [
     assert.equal(github.issues.length, expectedAlerts);
     assert.equal(receipt.alert.state, expectedAlerts ? "created" : "none");
     if (expectedAlerts) {
-      assert.match(github.issues[0].title, /First edit/);
+      assert.equal(github.issues[0].title, "[DELIVERY SLA] loftwah/example · First edit → exact live identity reached the 300s limit");
       assert.ok(github.issues[0].body.includes(`| First edit → live | ${firstEditToLiveMs} ms |`));
       assert.ok(!github.issues[0].body.includes(firstEditAt), "no raw input time in GitHub");
     }
@@ -704,4 +706,24 @@ test("a renewed breach on the same issue permits one new measured recovery", asy
   await repeat.finish({ liveRevision: SHA });
   assert.equal(github.issues.length, 1);
   assert.equal(issue.comments.length, 3, "repeat green is ignored");
+});
+
+test("an open generic-title incident is reused by its body marker", async (t) => {
+  const dir = ownedDir(t);
+  const github = fakeGitHub();
+  const fingerprint = stableFingerprint({
+    repo: "loftwah/example",
+    releasePath: "scripts/deploy.mjs",
+    bottleneck: "first-edit to exact live identity",
+  });
+  const legacyTitle = "[DELIVERY SLA] First edit → exact live identity reached the 300s limit";
+  await github.create({ title: legacyTitle, body: `<!-- delivery-sla:${fingerprint} -->` });
+
+  const clock = fakeClock();
+  const { run } = firstEditRun(dir, clock, github, { firstEditToLiveMs: 310_000 });
+  await run.stage("live verification", async () => clock.advance(1_000));
+  const receipt = await run.finish({ liveRevision: SHA });
+  assert.equal(github.issues.length, 1);
+  assert.equal(receipt.alert.state, "updated");
+  assert.equal(github.issues[0].title, legacyTitle);
 });
