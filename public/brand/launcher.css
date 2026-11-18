@@ -35,6 +35,13 @@ header .composer-return:focus-visible {
 html { scrollbar-gutter: stable; }
 html.launcher-open { overflow: hidden; scroll-behavior: auto; }
 .app-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.app-launcher .apps-fallback {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: 15px;
+  font-weight: 600;
+}
 :is(.app-tools, .app-launcher) [data-open-apps] {
   display: inline-flex;
   align-items: center;
@@ -184,11 +191,55 @@ html.launcher-open { overflow: hidden; scroll-behavior: auto; }
 }
 #app-navigation li { margin: 0; }
 #app-navigation .launcher-section {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--menu-secondary);
   padding: 14px 10px 6px;
 }
+#app-navigation .launcher-section h3 {
+  margin: 0;
+  font: 600 12px/1.4 Space, system-ui, sans-serif;
+  letter-spacing: .01em;
+  text-transform: none;
+  color: var(--menu-secondary);
+}
+#app-navigation li[data-recent-kind="project"] > a { background: var(--menu-field); }
+#app-navigation .launcher-recents-note {
+  margin: 0;
+  padding: 4px 10px 8px;
+  color: var(--menu-secondary);
+  font-size: 13px;
+  line-height: 1.4;
+}
+#app-navigation .launcher-more { margin: 8px 0 0; }
+#app-navigation .launcher-more summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  box-sizing: border-box;
+  min-height: 48px;
+  padding: 10px;
+  list-style: none;
+  cursor: pointer;
+  border-top: 1px solid var(--menu-rule);
+  color: var(--menu-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+#app-navigation .launcher-more summary::-webkit-details-marker { display: none; }
+#app-navigation .launcher-more summary::after {
+  content: "Show";
+  color: var(--menu-secondary);
+  font-size: 12px;
+  font-weight: 500;
+}
+#app-navigation .launcher-more details[open] summary::after { content: "Hide"; }
+#app-navigation .launcher-more summary:focus-visible { outline: 2px solid var(--menu-signal); outline-offset: -2px; }
+#app-navigation .launcher-more ul {
+  margin: 0;
+  padding: 0 3px;
+  overflow: visible;
+  overscroll-behavior: auto;
+}
+#app-navigation .launcher-more details { display: block; }
 #app-navigation li a {
   display: grid;
   grid-template-columns: 40px minmax(0, 1fr) 20px;
