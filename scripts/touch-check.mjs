@@ -1,16 +1,54 @@
 import { createRequire } from "node:module";
 import { writeFileSync, mkdirSync } from "node:fs";
 import assert from "node:assert/strict";
+import { createOwnedCleanup } from "./lib/owned-cleanup.mjs";
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 mkdirSync("output/touch", { recursive: true });
-const browser = await chromium.launch({
-  headless: true,
-  ...(process.env.PLAYWRIGHT_CHROMIUM
-    ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM }
-    : { channel: "chrome" }),
-});
+
+// Track the launch so a signal arriving mid-launch still owns the browser that
+// resolves from it. The handlers are installed before launch: Node's default
+// SIGINT/SIGTERM exit skips `finally` and would strand the session.
+let browser;
+let pendingLaunch;
+const teardown = async () => {
+  if (pendingLaunch) {
+    try {
+      browser = await pendingLaunch;
+    } catch {
+      // A failed launch leaves no browser to close.
+    }
+    pendingLaunch = undefined;
+  }
+  if (browser) await browser.close();
+  // The validation completion marker belongs to owned teardown. It is written
+  // only after the owned browser closes, on normal exit, errors and signals.
+  if (process.env.LOFTWAH_VALIDATION_COMPLETION)
+    writeFileSync(
+      process.env.LOFTWAH_VALIDATION_COMPLETION,
+      JSON.stringify({
+        version: 1,
+        generation: process.env.LOFTWAH_VALIDATION_GENERATION,
+        cleanup: "complete",
+      }),
+    );
+};
+const owned = createOwnedCleanup(teardown);
+owned.install();
+
 try {
+  pendingLaunch = chromium.launch({
+    headless: true,
+    ...(process.env.PLAYWRIGHT_CHROMIUM
+      ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM }
+      : { channel: "chrome" }),
+    // This module owns SIGINT/SIGTERM teardown; Playwright's default handlers
+    // would close the browser and exit before our cleanup ran.
+    handleSIGINT: false,
+    handleSIGTERM: false,
+  });
+  browser = await pendingLaunch;
+  pendingLaunch = undefined;
   const context = await browser.newContext({
       viewport: { width: 390, height: 844 },
       isMobile: true,
@@ -160,14 +198,12 @@ try {
   );
   console.log(result);
 } finally {
-  await browser.close();
-  if (process.env.LOFTWAH_VALIDATION_COMPLETION)
-    writeFileSync(
-      process.env.LOFTWAH_VALIDATION_COMPLETION,
-      JSON.stringify({
-        version: 1,
-        generation: process.env.LOFTWAH_VALIDATION_GENERATION,
-        cleanup: "complete",
-      }),
-    );
+  // Normal completion and thrown errors drain the same bounded teardown the
+  // signal handler uses. Keep the listeners installed until it settles so a
+  // signal during cleanup cannot restore Node's immediate default exit.
+  try {
+    await owned.clean();
+  } finally {
+    owned.uninstall();
+  }
 }
