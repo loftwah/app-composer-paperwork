@@ -9,6 +9,7 @@ import { readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { PDFDocument, PDFName, PDFNumber, decodePDFRawStream } from "pdf-lib";
 import path from "node:path";
 import assert from "node:assert/strict";
+import { createOwnedCleanup } from "./lib/owned-cleanup.mjs";
 
 const output = path.resolve(
   process.env.PAPERWORK_EVIDENCE || "output/awkward-fields",
@@ -43,25 +44,102 @@ const server = createServer((req, res) => {
   );
   res.end(readFileSync(file));
 });
-await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-const base = `http://127.0.0.1:${server.address().port}`;
 const receipt = {
-  url: base,
+  url: "",
   checks: {},
   known_limitations: [
     "Rendered widget geometry is checked in Chromium only; no physical printer or second OS was exercised.",
     "The XFA fixture is a minimal synthetic /XFA carrier, not a genuine LiveCycle form.",
   ],
 };
+
+// The browser and this local server belong to this run. Node's default
+// SIGINT/SIGTERM exit skips `finally`, so install bounded handlers before either
+// is started; Playwright's own signal handlers are disabled on launch below so
+// they cannot close the browser before this cleanup runs.
+let base;
+let browser;
+let pendingLaunch;
+let completed = false;
+const teardown = async () => {
+  const failures = [];
+  const attempt = async (step) => {
+    try {
+      await step();
+    } catch (error) {
+      failures.push(error);
+    }
+  };
+  // A signal can arrive while the browser is still launching. Settle that
+  // launch first so its profile is owned before the close steps run.
+  if (pendingLaunch) {
+    try {
+      browser = await pendingLaunch;
+    } catch {
+      // A failed launch leaves no browser. Preserve its original error.
+    }
+    pendingLaunch = undefined;
+  }
+  await attempt(() => browser?.close());
+  await attempt(
+    () =>
+      new Promise((resolve, reject) => {
+        server.close((error) =>
+          error && error.code !== "ERR_SERVER_NOT_RUNNING"
+            ? reject(error)
+            : resolve(),
+        );
+        // Chrome keeps sockets alive; waiting for them would block teardown
+        // when a browser could not be closed.
+        server.closeAllConnections?.();
+      }),
+  );
+  // The receipt belongs to owned teardown so evidence, pass state and failures
+  // are recorded on normal exit, thrown errors and signals alike.
+  await attempt(() => {
+    receipt.pass =
+      completed &&
+      failures.length === 0 &&
+      !receipt.interrupted &&
+      Object.values(receipt.checks).every((value) => value === "pass");
+    writeFileSync(output + "/receipt.json", JSON.stringify(receipt, null, 2) + "\n");
+    console.log(JSON.stringify(receipt, null, 2));
+    if (!receipt.pass) process.exitCode = 1;
+  });
+  if (failures.length)
+    throw new AggregateError(failures, "Awkward-fields cleanup failed");
+};
+const owned = createOwnedCleanup(teardown, {
+  onInterrupt: (signal) => {
+    receipt.interrupted = signal;
+  },
+});
+owned.install();
+
 const appearanceBytes = (stream) =>
   Buffer.from(decodePDFRawStream(stream).decode());
-const browser = await chromium.launch({
-  headless: true,
-  ...(process.env.PLAYWRIGHT_CHROMIUM
-    ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM }
-    : { channel: "chrome" }),
-});
 try {
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.removeListener("error", reject);
+      resolve();
+    });
+  });
+  base = `http://127.0.0.1:${server.address().port}`;
+  receipt.url = base;
+  pendingLaunch = chromium.launch({
+    headless: true,
+    ...(process.env.PLAYWRIGHT_CHROMIUM
+      ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM }
+      : { channel: "chrome" }),
+    // This module owns SIGINT/SIGTERM teardown; Playwright's default handlers
+    // would close the browser and exit before our cleanup ran.
+    handleSIGINT: false,
+    handleSIGTERM: false,
+  });
+  browser = await pendingLaunch;
+  pendingLaunch = undefined;
   receipt.browser = browser.version();
   const context = await browser.newContext({
     viewport: { width: 1440, height: 1000 },
@@ -211,11 +289,14 @@ try {
   receipt.checks.negative_tab_keeps_completed_document_open = "pass";
   assert.deepEqual(errors, []);
   receipt.checks.no_page_errors = "pass";
+  completed = true;
 } finally {
-  await browser.close();
-  server.close();
-  receipt.pass = Object.values(receipt.checks).every((value) => value === "pass");
-  writeFileSync(output + "/receipt.json", JSON.stringify(receipt, null, 2) + "\n");
-  console.log(JSON.stringify(receipt, null, 2));
-  if (!receipt.pass) process.exitCode = 1;
+  // Normal completion and thrown errors drain the same bounded teardown the
+  // signal handler uses. Keep the listeners installed until it settles so a
+  // signal during cleanup cannot restore Node's immediate default exit.
+  try {
+    await owned.clean();
+  } finally {
+    owned.uninstall();
+  }
 }
