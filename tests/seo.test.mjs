@@ -97,5 +97,5 @@ test("the actual build switches a prepared instance from noindex to its own revi
   );
   assert.doesNotMatch(page, /https:\/\/paperwork\.loftwah\.com/);
   const xml = readFileSync(join(root, "dist/sitemap.xml"), "utf8");
-  assert(xml.includes(ownOrigin + "/help.html"));
+  assert(xml.includes(ownOrigin + "/help"));
 });

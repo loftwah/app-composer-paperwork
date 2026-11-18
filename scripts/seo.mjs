@@ -16,7 +16,7 @@ const pages = [
   },
   {
     file: "help.html",
-    path: "/help.html",
+    path: "/help",
     title: "Paperwork help — PDF editing, signatures and privacy",
     description:
       "How to fill PDF forms, draw, add a PNG signature, save and print with Paperwork. Read about compatibility, privacy and keyboard shortcuts.",
