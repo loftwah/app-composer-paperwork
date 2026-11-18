@@ -3,3 +3,4 @@ dist/
 output/
 .wrangler/
 .dev.vars
+.release/

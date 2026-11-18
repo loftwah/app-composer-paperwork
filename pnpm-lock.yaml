@@ -175,6 +175,9 @@ overrides:
   sharp: 0.35.5
   undici@>=7.0.0 <7.30.1: 7.30.1
 
+patchedDependencies:
+  picomatch@4.0.7: bfe0ea34f6ca3db9ab12549b2f7dde8be3c4386d7f4461d3f64f5e560ea29f2c
+
 importers:
 
   .:
@@ -1731,9 +1734,9 @@ snapshots:
       '@esbuild/win32-ia32': 0.28.2
       '@esbuild/win32-x64': 0.28.2
 
-  fdir@6.5.0(picomatch@4.0.7):
+  fdir@6.5.0(picomatch@4.0.7(patch_hash=bfe0ea34f6ca3db9ab12549b2f7dde8be3c4386d7f4461d3f64f5e560ea29f2c)):
     optionalDependencies:
-      picomatch: 4.0.7
+      picomatch: 4.0.7(patch_hash=bfe0ea34f6ca3db9ab12549b2f7dde8be3c4386d7f4461d3f64f5e560ea29f2c)
 
   fsevents@2.3.3:
     optional: true
@@ -1823,7 +1826,7 @@ snapshots:
 
   picocolors@1.1.1: {}
 
-  picomatch@4.0.7: {}
+  picomatch@4.0.7(patch_hash=bfe0ea34f6ca3db9ab12549b2f7dde8be3c4386d7f4461d3f64f5e560ea29f2c): {}
 
   playwright-core@1.65.0: {}
 
@@ -1900,8 +1903,8 @@ snapshots:
 
   tinyglobby@0.2.17:
     dependencies:
-      fdir: 6.5.0(picomatch@4.0.7)
-      picomatch: 4.0.7
+      fdir: 6.5.0(picomatch@4.0.7(patch_hash=bfe0ea34f6ca3db9ab12549b2f7dde8be3c4386d7f4461d3f64f5e560ea29f2c))
+      picomatch: 4.0.7(patch_hash=bfe0ea34f6ca3db9ab12549b2f7dde8be3c4386d7f4461d3f64f5e560ea29f2c)
 
   tslib@1.14.1: {}
 
@@ -1919,7 +1922,7 @@ snapshots:
   vite@8.3.6(esbuild@0.28.1):
     dependencies:
       lightningcss: 1.33.0
-      picomatch: 4.0.7
+      picomatch: 4.0.7(patch_hash=bfe0ea34f6ca3db9ab12549b2f7dde8be3c4386d7f4461d3f64f5e560ea29f2c)
       postcss: 8.5.32
       rolldown: 1.2.16
       tinyglobby: 0.2.17

@@ -13,6 +13,7 @@
     "test": "node --experimental-strip-types --test tests/*.test.mjs",
     "build": "vite build && node scripts/identity.mjs",
     "deploy": "node scripts/deploy.mjs",
+    "release:watchdog": "node scripts/release-watchdog.mjs --repo loftwah/app-composer-paperwork",
     "samples": "node scripts/sample.mjs"
   },
   "dependencies": {
