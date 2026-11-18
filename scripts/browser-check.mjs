@@ -966,9 +966,11 @@ try {
       document.querySelector("#page").dataset.rendered === "0" &&
       document.querySelector("#page").getAttribute("aria-busy") === "false",
   );
-  const openProperties = async (target) => {
-    await target.locator("#more-actions").click();
-    await target.locator("#properties").click();
+  // The phone context is touch-only; mouse clicks in WebKit mobile emulation
+  // can be mis-hit-tested as the root element. Keep each target's input mode.
+  const openProperties = async (target, input = "click") => {
+    await target.locator("#more-actions")[input]();
+    await target.locator("#properties")[input]();
     await target.locator("#properties-dialog").waitFor({ state: "visible" });
   };
   await openProperties(page);
@@ -1148,6 +1150,7 @@ try {
     acceptDownloads: true,
   });
   const phone = await mobileContext.newPage();
+  activePage = phone;
   await phone.goto(base);
   await phone
     .locator(".press-illustration img")
@@ -1261,11 +1264,11 @@ try {
     "Phone Example",
   );
   receipt.checks.webkit_phone_touch_export = "pass";
-  await phone.locator("#more-actions").click();
+  await phone.locator("#more-actions").tap();
   if ((await phone.locator("#theme").getAttribute("aria-pressed")) === "true")
-    await phone.locator("#theme").click();
+    await phone.locator("#theme").tap();
   else await phone.keyboard.press("Escape");
-  await openProperties(phone);
+  await openProperties(phone, "tap");
   const propertiesBox = await phone.locator("#properties-dialog").boundingBox();
   assert(propertiesBox.width <= 390 && propertiesBox.height <= 844);
   assert(
@@ -1275,9 +1278,9 @@ try {
   );
   await phone.locator("#property-author").fill("Fictional Phone Editor");
   await phone.screenshot({ path: output + "/properties-phone-light.png" });
-  await phone.locator('#properties-dialog button[type="submit"]').click();
+  await phone.locator('#properties-dialog button[type="submit"]').tap();
   const phonePropertiesDownload = phone.waitForEvent("download");
-  await phone.locator("#save").click();
+  await phone.locator("#save").tap();
   const phonePropertiesPath = output + "/phone-properties.pdf";
   await (await phonePropertiesDownload).saveAs(phonePropertiesPath);
   assert.equal(
