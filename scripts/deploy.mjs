@@ -102,7 +102,7 @@ let target = null;
 try {
   console.log(`checking ${sha.slice(0, 12)}…`);
   await stage("dependency audit", () =>
-    run("pnpm", ["audit", "--audit-level", "low"], { stdio: "inherit" }),
+    run("node", ["scripts/audit-dependencies.mjs"], { stdio: "inherit" }),
   );
   await stage("required checks", () =>
     run("pnpm", ["check"], { stdio: "inherit" }),

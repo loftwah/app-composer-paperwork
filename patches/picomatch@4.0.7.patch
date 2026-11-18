@@ -1,0 +1,11 @@
+diff --git a/lib/parse.js b/lib/parse.js
+--- a/lib/parse.js
++++ b/lib/parse.js
+@@ -544,4 +544,6 @@
+-    if ((token.type === 'plus' || token.type === 'star') && analysis.risky) {
++    // Prevent nested wildcard quantifiers in repeated extglobs (CVE-2026-112366).
++    const repeated = token.type === 'plus' || token.type === 'star';
++    if (repeated && (analysis.risky || body.includes('*'))) {
+       const safeOutput = analysis.safeOutput
+         ? (token.output ? '' : ONE_CHAR) + (opts.capture ? `(${analysis.safeOutput})` : analysis.safeOutput)
+         : undefined;
