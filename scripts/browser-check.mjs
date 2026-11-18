@@ -6,6 +6,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import assert from "node:assert/strict";
 import { PDFDocument, PDFName, PDFString } from "pdf-lib";
+import { createOwnedCleanup } from "./lib/owned-cleanup.mjs";
 const require = createRequire(import.meta.url);
 const { chromium, webkit } = require(
   process.env.PLAYWRIGHT_MODULE || "playwright",
@@ -55,11 +56,81 @@ const server = createServer((req, res) => {
   );
   res.end(readFileSync(file));
 });
-await new Promise((r) => server.listen(0, "127.0.0.1", r));
-const base =
-  process.env.PAPERWORK_ORIGIN || `http://127.0.0.1:${server.address().port}`;
 const browsers = [];
+const launches = new Set();
 let activePage;
+const receipt = {
+  checks: {},
+  known_limitations: [
+    "Physical iPhone, real printer dialog and unfamiliar human acceptance not exercised.",
+    "The supplied corpus has no genuine XFA or certificate-signed fixture.",
+  ],
+};
+// Track launches so a signal during launch still owns the resulting browser.
+async function launchBrowser(launcher, options) {
+  const pending = launcher.launch(options);
+  launches.add(pending);
+  try {
+    const browser = await pending;
+    browsers.push(browser);
+    return browser;
+  } finally {
+    launches.delete(pending);
+  }
+}
+const teardown = async () => {
+  const failures = [];
+  // Every owned resource is attempted even when an earlier step fails, so one
+  // broken close cannot strand a browser, the listener or validation evidence.
+  const attempt = async (step) => {
+    try {
+      await step();
+    } catch (error) {
+      failures.push(error);
+      (receipt.cleanupFailures ??= []).push(String(error));
+    }
+  };
+  // A signal can arrive while a browser is still launching. Settle that launch
+  // first so its profile is owned before the close steps run.
+  for (const pending of [...launches]) await attempt(() => pending);
+  for (const browser of browsers) await attempt(() => browser.close());
+  await attempt(
+    () =>
+      new Promise((resolve, reject) => {
+        server.close((error) =>
+          error && error.code !== "ERR_SERVER_NOT_RUNNING"
+            ? reject(error)
+            : resolve(),
+        );
+        // Chrome keeps sockets alive; waiting for them would block teardown
+        // when a browser could not be closed.
+        server.closeAllConnections?.();
+      }),
+  );
+  // Receipt and validation completion belong to owned teardown so they are
+  // written on normal exit, thrown errors and signals alike.
+  await attempt(() =>
+    writeFileSync(output + "/receipt.json", JSON.stringify(receipt, null, 2)),
+  );
+  if (failures.length) {
+    throw new AggregateError(failures, "Browser-check cleanup failed");
+  }
+  if (process.env.LOFTWAH_VALIDATION_COMPLETION)
+    writeFileSync(
+      process.env.LOFTWAH_VALIDATION_COMPLETION,
+      JSON.stringify({
+        version: 1,
+        generation: process.env.LOFTWAH_VALIDATION_GENERATION,
+        cleanup: "complete",
+      }),
+    );
+};
+const owned = createOwnedCleanup(teardown, {
+  onInterrupt: (signal) => {
+    receipt.interrupted = signal;
+  },
+});
+owned.install();
 // The local launcher is app-owned markup plus a reviewed shared controller. Check
 // the actual Apps menu on the real page: one searched LDraw result, its local
 // tile, its destination and the documented keyboard paths, without navigating.
@@ -157,25 +228,31 @@ async function checkLdrawAppsMenu(page, label, open) {
     screenshot: path.basename(screenshot),
   };
 }
-const receipt = {
-  source_sha: execFileSync("git", ["rev-parse", "HEAD"], {
-    encoding: "utf8",
-  }).trim(),
-  url: base,
-  checks: {},
-  known_limitations: [
-    "Physical iPhone, real printer dialog and unfamiliar human acceptance not exercised.",
-    "The supplied corpus has no genuine XFA or certificate-signed fixture.",
-  ],
-};
 try {
-  const browser = await chromium.launch({
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.removeListener("error", reject);
+      resolve();
+    });
+  });
+  const base =
+    process.env.PAPERWORK_ORIGIN ||
+    `http://127.0.0.1:${server.address().port}`;
+  receipt.url = base;
+  receipt.source_sha = execFileSync("git", ["rev-parse", "HEAD"], {
+    encoding: "utf8",
+  }).trim();
+  const browser = await launchBrowser(chromium, {
     headless: true,
     ...(process.env.PLAYWRIGHT_CHROMIUM
       ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM }
       : { channel: "chrome" }),
+    // This module owns SIGINT/SIGTERM teardown. Playwright's default handlers
+    // would close the browser and exit before our cleanup wrote the receipt.
+    handleSIGINT: false,
+    handleSIGTERM: false,
   });
-  browsers.push(browser);
   receipt.browser = browser.version();
   const context = await browser.newContext({
     viewport: { width: 1440, height: 1000 },
@@ -1053,13 +1130,16 @@ try {
   assert.deepEqual(errors, []);
   writeFileSync(output + "/network.json", JSON.stringify(requests, null, 2));
   // One phone-sized WebKit journey, using real touch events for pen and browser controls.
-  const mobile = await webkit.launch({
+  const mobile = await launchBrowser(webkit, {
     headless: true,
     ...(process.env.PLAYWRIGHT_WEBKIT
       ? { executablePath: process.env.PLAYWRIGHT_WEBKIT }
       : {}),
+    // This module owns SIGINT/SIGTERM teardown. Playwright's default handlers
+    // would close the browser and exit before our cleanup wrote the receipt.
+    handleSIGINT: false,
+    handleSIGTERM: false,
   });
-  browsers.push(mobile);
   const mobileContext = await mobile.newContext({
     viewport: { width: 390, height: 844 },
     deviceScaleFactor: 2,
@@ -1230,16 +1310,12 @@ try {
   console.error(error);
   process.exitCode = 1;
 } finally {
-  writeFileSync(output + "/receipt.json", JSON.stringify(receipt, null, 2));
-  for (const b of browsers) await b.close();
-  await new Promise((r) => server.close(r));
-  if (process.env.LOFTWAH_VALIDATION_COMPLETION)
-    writeFileSync(
-      process.env.LOFTWAH_VALIDATION_COMPLETION,
-      JSON.stringify({
-        version: 1,
-        generation: process.env.LOFTWAH_VALIDATION_GENERATION,
-        cleanup: "complete",
-      }),
-    );
+  // Normal completion and thrown errors drain the same bounded teardown the
+  // signal handler uses. Keep the listeners installed until it settles so a
+  // signal during cleanup cannot restore Node's immediate default exit.
+  try {
+    await owned.clean();
+  } finally {
+    owned.uninstall();
+  }
 }
