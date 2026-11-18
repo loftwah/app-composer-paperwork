@@ -83,7 +83,10 @@ export async function verifySeo({ origin, imageBytes, fetchImpl = fetch }) {
       });
       assert.equal(response.status, 200, agent + " " + path);
       assert(!/noindex/i.test(response.headers.get("x-robots-tag") || ""));
-      const canonical = origin + (path.startsWith("/?") ? "/" : path);
+      // /help.html is a legacy alias that 307s to the clean /help canonical.
+      const canonical =
+        origin +
+        (path === "/help.html" ? "/help" : path.startsWith("/?") ? "/" : path);
       const html = await response.text();
       const record = inspectHead(html, { canonical, image });
       const schema = JSON.parse(
@@ -125,7 +128,7 @@ export async function verifySeo({ origin, imageBytes, fetchImpl = fetch }) {
   const xml = await sitemap.text();
   assert.deepEqual(
     [...xml.matchAll(/<loc>(.*?)<\/loc>/g)].map((m) => m[1]),
-    [origin + "/", origin + "/help.html"],
+    [origin + "/", origin + "/help"],
   );
   const missing = await fetchImpl(origin + "/not-a-page-seo-check");
   assert.equal(missing.status, 404);
