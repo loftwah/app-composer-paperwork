@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import assert from "node:assert/strict";
+import { createOwnedCleanup } from "./lib/owned-cleanup.mjs";
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 const output = path.resolve(
@@ -42,16 +43,14 @@ const server = createServer((request, response) => {
   );
   response.end(readFileSync(file));
 });
-await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-const origin =
-  process.env.PAPERWORK_ORIGIN ||
-  `http://127.0.0.1:${server.address().port}`;
-const browser = await chromium.launch({
-  headless: true,
-  ...(process.env.PLAYWRIGHT_CHROMIUM
-    ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM }
-    : { channel: "chrome" }),
-});
+// The browser and this local listener belong to this run. Node's default
+// SIGINT/SIGTERM exit skips `finally`, so install bounded handlers before either
+// is started; Playwright's own signal handlers are disabled on launch below so
+// they cannot close the browser before this cleanup runs.
+let origin;
+let browser;
+let pendingLaunch;
+let checksFinished = false;
 const receipt = {
   source_sha: (() => {
     try {
@@ -62,11 +61,79 @@ const receipt = {
       return "";
     }
   })(),
-  origin,
-  browser: browser.version(),
+  origin: "",
+  browser: "",
   checks: {},
   measurements: {},
 };
+const teardown = async () => {
+  const failures = [];
+  const attempt = async (step) => {
+    try {
+      await step();
+    } catch (error) {
+      failures.push(error);
+    }
+  };
+  // A signal can arrive while the browser is still launching. Settle that
+  // launch first so its profile is owned before the close steps run.
+  if (pendingLaunch) {
+    try {
+      browser = await pendingLaunch;
+    } catch {
+      // A failed launch leaves no browser. Preserve its original error.
+    }
+    pendingLaunch = undefined;
+  }
+  await attempt(() => browser?.close());
+  await attempt(
+    () =>
+      new Promise((resolve, reject) => {
+        server.close((error) =>
+          error && error.code !== "ERR_SERVER_NOT_RUNNING"
+            ? reject(error)
+            : resolve(),
+        );
+        // Chrome keeps sockets alive; waiting for them would block teardown
+        // when a browser could not be closed.
+        server.closeAllConnections?.();
+      }),
+  );
+  // The receipt, its honest pass state and the completion marker belong to
+  // owned teardown: evidence is written on normal exit, errors and signals.
+  await attempt(() => {
+    receipt.pass =
+      checksFinished &&
+      failures.length === 0 &&
+      !receipt.interrupted &&
+      Object.values(receipt.checks).every((value) => value === "pass");
+    writeFileSync(
+      `${output}/toolbar-receipt.json`,
+      JSON.stringify(receipt, null, 2) + "\n",
+    );
+    console.log(JSON.stringify(receipt, null, 2));
+    if (!receipt.pass) process.exitCode = 1;
+  });
+  if (failures.length)
+    throw new AggregateError(failures, "Toolbar-check cleanup failed");
+  // The completion marker follows a settled browser, listener and receipt;
+  // it is withheld when an owned close failed.
+  if (process.env.LOFTWAH_VALIDATION_COMPLETION)
+    writeFileSync(
+      process.env.LOFTWAH_VALIDATION_COMPLETION,
+      JSON.stringify({
+        version: 1,
+        generation: process.env.LOFTWAH_VALIDATION_GENERATION,
+        cleanup: "complete",
+      }),
+    );
+};
+const owned = createOwnedCleanup(teardown, {
+  onInterrupt: (signal) => {
+    receipt.interrupted = signal;
+  },
+});
+owned.install();
 const metrics = (page) =>
   page.evaluate(() => {
     const rect = (selector) => {
@@ -93,6 +160,30 @@ const metrics = (page) =>
 const clickTool = (page, tool) =>
   page.locator(`button[data-tool="${tool}"]`).click();
 try {
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.removeListener("error", reject);
+      resolve();
+    });
+  });
+  origin =
+    process.env.PAPERWORK_ORIGIN ||
+    `http://127.0.0.1:${server.address().port}`;
+  receipt.origin = origin;
+  pendingLaunch = chromium.launch({
+    headless: true,
+    ...(process.env.PLAYWRIGHT_CHROMIUM
+      ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM }
+      : { channel: "chrome" }),
+    // This module owns SIGINT/SIGTERM teardown; Playwright's default handlers
+    // would close the browser and exit before our cleanup ran.
+    handleSIGINT: false,
+    handleSIGTERM: false,
+  });
+  browser = await pendingLaunch;
+  pendingLaunch = undefined;
+  receipt.browser = browser.version();
   for (const [label, viewport] of [
     ["desktop", { width: 1440, height: 1000 }],
     ["phone", { width: 390, height: 844 }],
@@ -220,12 +311,18 @@ try {
     await page.screenshot({ path: `${output}/${label}-navigation.png` });
     await context.close();
   }
-  writeFileSync(
-    `${output}/toolbar-receipt.json`,
-    JSON.stringify(receipt, null, 2) + "\n",
-  );
-  console.log(JSON.stringify(receipt, null, 2));
+  checksFinished = true;
+} catch (error) {
+  receipt.failure = error.stack;
+  console.error(error);
+  process.exitCode = 1;
 } finally {
-  await browser.close();
-  server.close();
+  // Normal completion and thrown errors drain the same bounded teardown the
+  // signal handler uses. Keep the listeners installed until it settles so a
+  // signal during cleanup cannot restore Node's immediate default exit.
+  try {
+    await owned.clean();
+  } finally {
+    owned.uninstall();
+  }
 }
