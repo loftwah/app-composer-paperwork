@@ -66,15 +66,13 @@ test("the local Apps menu controller is the reviewed Composer distribution with 
   const launcher = readFileSync("public/brand/launcher.js");
   assert.equal(
     createHash("sha256").update(launcher).digest("hex"),
-    "2dc9bf4c75f71653aef2c419be4306f8ddbc973b4dd205611c71dd2ca8613111",
+    "a350224e2c4fe6d2a9a808412901e67d3f192891290496bbf71046a54ef3a78e",
     "public/brand/launcher.js must be the reviewed Composer distribution",
   );
   const code = launcher.toString("utf8");
-  assert.match(
-    code,
-    /\{ name: "Edit images", description: "Media Studio Image Tools\. Resize, crop and convert images on this device\.", keywords: "image images workbench resize crop convert inspect photo jpeg png webp local browser", aliases: \["image workbench", "image editor", "edit images", "browser-local image", "image tools", "images", "resize image", "crop image", "convert image"\], audience: "public", group: "apps", href: "https:\/\/media\.loftwah\.com\/tools\/images", icon: "tool" \}/,
-    "the reviewed distribution offers the Edit images task at its canonical destination",
-  );
+  const imageTask = code.match(/\{ name: "Edit images", [^\n]+/)?.[0] ?? "";
+  assert.match(imageTask, /href: "https:\/\/media\.loftwah\.com\/tools\/images", icon: "tool"/);
+  assert.match(imageTask, /aliases: \[[^\]]*"sprite atlas", "sprite sheet"/);
   assert.match(
     code,
     /\{ name: "LDraw", description: "Draw and save editable diagrams locally, then export PNG or SVG\.", keywords: "draw drawing diagram excalidraw scene png svg local offline", aliases: \["draw", "diagram", "drawing"\], audience: "public", group: "apps", href: "https:\/\/ldraw\.loftwah\.com\/", image: "apps\/ldraw-tile-fa7a2ab6171c-010cfbd2-r2-96\.webp", catalogue: "ldraw" \}/,
