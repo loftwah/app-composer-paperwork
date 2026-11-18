@@ -1668,6 +1668,12 @@ body:not(.has-document) :is(#more-actions, .mobile-history) {
     width: 44px;
   }
 }
+@media (max-width: 382px) {
+  .tools {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 360px) {
   .page-controls > span {
     display: none;
