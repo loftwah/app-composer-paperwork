@@ -109,3 +109,94 @@ test("browser-check releases owned resources and writes evidence on SIGINT", asy
     "an unrelated listener must keep running",
   );
 });
+
+test("browser-check drains owned cleanup when a check throws and failure diagnostics hang", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "paperwork-check-throw-"));
+  const closed = join(root, "closed");
+  const ready = join(root, "ready");
+  const evidence = join(root, "evidence");
+  const completion = join(root, "completion.json");
+  const fakeModule = join(root, "fake-playwright.cjs");
+  t.after(() => rm(root, { recursive: true, force: true }));
+
+  // The minimal page makes an early check throw, so control reaches the catch.
+  // Its best-effort diagnostics then hang, as a blocked renderer would leave
+  // page.evaluate()/screenshot() pending forever. Only bounded diagnostics let
+  // the `finally` drain teardown; the bound below fails this test if they do not.
+  await writeFile(
+    fakeModule,
+    `const fs = require('node:fs');
+     const browser = () => ({
+       version: () => 'fake',
+       newContext: async () => ({ newPage: async () => ({
+         on() {},
+         goto: async (url) => {
+           fs.writeFileSync(${JSON.stringify(ready)}, url);
+         },
+         title: async () => 'WRONG TITLE',
+         evaluate: async () => new Promise(() => {}),
+         screenshot: async () => new Promise(() => {}),
+       }) }),
+       close: async () => fs.appendFileSync(${JSON.stringify(closed)}, 'chromium\\n'),
+     });
+     module.exports = {
+       chromium: { launch: async () => browser() },
+       webkit: { launch: async () => browser() },
+     };`,
+  );
+
+  const unrelated = createServer((_req, res) => res.end("alive"));
+  await new Promise((resolve) => unrelated.listen(0, "127.0.0.1", resolve));
+  const unrelatedPort = unrelated.address().port;
+  t.after(() => new Promise((resolve) => unrelated.close(resolve)));
+
+  const child = spawn(process.execPath, [BROWSER_CHECK], {
+    cwd: process.cwd(),
+    stdio: ["ignore", "pipe", "pipe"],
+    env: {
+      ...process.env,
+      PLAYWRIGHT_MODULE: fakeModule,
+      PAPERWORK_EVIDENCE: evidence,
+      LOFTWAH_VALIDATION_COMPLETION: completion,
+      LOFTWAH_VALIDATION_GENERATION: "test",
+    },
+  });
+  t.after(() => {
+    if (child.exitCode === null && child.signalCode === null)
+      child.kill("SIGKILL");
+  });
+  const exited = once(child, "exit");
+  let timer;
+  const [code, signal] = await Promise.race([
+    exited,
+    new Promise((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error("owned cleanup never drained")),
+        10000,
+      );
+    }),
+  ]).finally(() => clearTimeout(timer));
+
+  assert.equal(signal, null);
+  assert.equal(code, 1, "a thrown check keeps the conventional failure exit");
+  assert.equal(await readFile(closed, "utf8"), "chromium\n");
+  const receipt = JSON.parse(await readFile(join(evidence, "receipt.json"), "utf8"));
+  assert.ok(
+    typeof receipt.failure === "string" && receipt.failure.length > 0,
+    "the original thrown check is still recorded",
+  );
+  assert.match(receipt.diagnostics_unavailable, /timed out/);
+  const completionData = JSON.parse(await readFile(completion, "utf8"));
+  assert.equal(completionData.cleanup, "complete");
+  await assert.rejects(
+    fetch(await readFile(ready, "utf8"), {
+      signal: AbortSignal.timeout(2000),
+    }),
+    "owned listener must be released",
+  );
+  assert.equal(
+    await (await fetch(`http://127.0.0.1:${unrelatedPort}`)).text(),
+    "alive",
+    "an unrelated listener must keep running",
+  );
+});
