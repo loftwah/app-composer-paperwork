@@ -66,3 +66,23 @@ export function createOwnedCleanup(
 
   return { clean, install, uninstall };
 }
+
+// Best-effort failure diagnostics (page.evaluate/screenshot) have no built-in
+// timeout and can stay pending forever when a renderer is blocked. Bound such a
+// step so it can never starve the `finally` that drains owned teardown and
+// writes the receipt/completion evidence. A timed-out step rejects; the caller
+// records it as unavailable and teardown still runs.
+const DEFAULT_STEP_TIMEOUT_MS = 5_000;
+
+export function withTimeout(step, timeoutMs = DEFAULT_STEP_TIMEOUT_MS) {
+  let timer;
+  return Promise.race([
+    Promise.resolve().then(step),
+    new Promise((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error(`Step timed out after ${timeoutMs}ms.`)),
+        timeoutMs,
+      );
+    }),
+  ]).finally(() => clearTimeout(timer));
+}

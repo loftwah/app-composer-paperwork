@@ -6,7 +6,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import assert from "node:assert/strict";
 import { PDFDocument, PDFName, PDFString } from "pdf-lib";
-import { createOwnedCleanup } from "./lib/owned-cleanup.mjs";
+import { createOwnedCleanup, withTimeout } from "./lib/owned-cleanup.mjs";
 const require = createRequire(import.meta.url);
 const { chromium, webkit } = require(
   process.env.PLAYWRIGHT_MODULE || "playwright",
@@ -1296,15 +1296,14 @@ try {
 } catch (error) {
   receipt.failure = error.stack;
   if (activePage) {
-    // Diagnostics are best-effort: a crashed/closed page makes evaluate/screenshot
-    // throw, which must not mask the original failure or its exit code.
+    // A blocked renderer must not keep failure diagnostics ahead of teardown.
     try {
-      receipt.state = await activePage.evaluate(() => ({
+      receipt.state = await withTimeout(() => activePage.evaluate(() => ({
         status: document.querySelector("#status").textContent,
         page: document.querySelector("#page").outerHTML.slice(0, 400),
         selection: document.querySelector("#page-number").value,
-      }));
-      await activePage.screenshot({ path: output + "/failure.png" });
+      })));
+      await withTimeout(() => activePage.screenshot({ path: output + "/failure.png" }));
     } catch (diagnosticError) {
       receipt.diagnostics_unavailable =
         diagnosticError?.message || String(diagnosticError);
