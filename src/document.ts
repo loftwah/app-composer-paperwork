@@ -89,11 +89,10 @@ export async function openDocument(
   bytes: Uint8Array,
   name: string,
 ): Promise<OpenDocument> {
-  if (
-    bytes.length > LIMITS.bytes ||
-    !new TextDecoder().decode(bytes.slice(0, 1024)).includes("%PDF-")
-  )
+  if (bytes.length > LIMITS.bytes)
     throw Error("Choose a PDF smaller than 30 MB.");
+  if (!new TextDecoder().decode(bytes.slice(0, 1024)).includes("%PDF-"))
+    throw Error("Paperwork couldn’t recognise this file as a PDF. Choose another PDF.");
   let parsed: PDFDocument;
   try {
     parsed = await PDFDocument.load(bytes, {
