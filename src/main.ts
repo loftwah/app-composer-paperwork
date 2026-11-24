@@ -56,10 +56,12 @@ type SignatureStamp = {
 };
 let signatures: SignatureStamp[] = [],
   selectedSignature = "",
-  signatureScale = 1,
+  signatureScale = 0.7,
+  reuseSignature = false,
   signaturePickerOpen = false,
   signatureSequence = 0,
   previewPoint: Point | undefined;
+const chosenSignature = () => signatures.find((s) => s.id === selectedSignature);
 let lastSaved = "",
   outputUrl = "",
   pendingOpen: (() => void) | undefined;
@@ -215,8 +217,11 @@ function syncToolChrome() {
   for (const el of document.querySelectorAll<HTMLButtonElement>("[data-tool]"))
     if (el.tagName === "BUTTON")
       el.setAttribute("aria-pressed", String(el.dataset.tool === tool));
-  $("tool-hint").textContent = hints[tool] || hints.select;
-  const stamp = signatures.find((s) => s.id === selectedSignature),
+  $("tool-hint").textContent =
+    tool === "image" && reuseSignature
+      ? "Click the page to stamp again. Drag a placed signature to adjust it."
+      : hints[tool] || hints.select;
+  const stamp = chosenSignature(),
     thumb = $<HTMLImageElement>("signature-button-thumb"),
     icon = document.querySelector<SVGElement>("#signature .signature-icon"),
     signatureButton = button("signature");
@@ -224,6 +229,7 @@ function syncToolChrome() {
   signatureButton.setAttribute("aria-pressed", String(tool === "image"));
   thumb.hidden = !stamp;
   if (stamp) thumb.src = stamp.image;
+  else thumb.removeAttribute("src");
   icon?.toggleAttribute("hidden", !!stamp);
   signatureButton.title = stamp
     ? `${stamp.name} selected. Choose or change signature (S)`
@@ -377,6 +383,7 @@ $("properties-form").onsubmit = (event) => {
   }
   propertiesDialog.close();
 };
+const replaceDialog = $<HTMLDialogElement>("replace-dialog");
 function requestOpen(action: () => void) {
   if (propertiesDialog.open) {
     $("properties-feedback").textContent =
@@ -386,15 +393,21 @@ function requestOpen(action: () => void) {
   settleField();
   if (dirty) {
     pendingOpen = action;
-    $<HTMLDialogElement>("replace-dialog").showModal();
+    replaceDialog.showModal();
   } else action();
 }
-button("cancel-replace").onclick = () =>
-  $<HTMLDialogElement>("replace-dialog").close();
-button("confirm-replace").onclick = () => {
-  $<HTMLDialogElement>("replace-dialog").close();
-  pendingOpen?.();
+replaceDialog.oncancel = () => {
   pendingOpen = undefined;
+};
+button("cancel-replace").onclick = () => {
+  pendingOpen = undefined;
+  replaceDialog.close();
+};
+button("confirm-replace").onclick = () => {
+  const action = pendingOpen;
+  pendingOpen = undefined;
+  replaceDialog.close();
+  action?.();
 };
 for (const id of ["open", "start-open"])
   button(id).onclick = () =>
@@ -432,14 +445,14 @@ function showOpenError(message: string) {
   }
   status(message, true);
 }
-async function loadFile(file: File) {
+async function loadFile(file: File, stamp?: SignatureStamp) {
   if (file.size > LIMITS.bytes)
     return showOpenError(
       "Choose a PDF smaller than 30 MB. Your current work is still here.",
     );
-  await load(new Uint8Array(await file.arrayBuffer()), file.name);
+  await load(new Uint8Array(await file.arrayBuffer()), file.name, stamp);
 }
-async function load(bytes: Uint8Array, name: string) {
+async function load(bytes: Uint8Array, name: string, stamp?: SignatureStamp) {
   if (busy) return;
   busy = true;
   syncChrome();
@@ -475,10 +488,29 @@ async function load(bytes: Uint8Array, name: string) {
     updateHistory();
     await renderPage();
     await old?.pdf.loadingTask.destroy();
-    status(
-      next.note ||
-        `${next.viewports.length} pages ready. Fill a field or choose a tool.`,
-    );
+    if ($("page").inert) return;
+    if (stamp) {
+      const viewport = next.viewports[0];
+      const item = signaturePlacement(
+        { x: viewport.width * 0.78, y: viewport.height * 0.85 },
+        stamp,
+      );
+      commitSignature(item, stamp, false);
+      focusPlacedSignature(item);
+      status(
+        [
+          "Signature placed on page 1. Drag it to move it or use the corner handle to resize.",
+          next.note,
+        ]
+          .filter(Boolean)
+          .join(" "),
+      );
+    } else {
+      status(
+        next.note ||
+          `${next.viewports.length} pages ready. Fill a field or choose a tool.`,
+      );
+    }
   } catch (e) {
     const message =
       e instanceof Error
@@ -687,7 +719,7 @@ const hints: Record<string, string> = {
   circle:
     "Drag a clean circle, or click for a default ring. Circle stays active.",
   image:
-    "Click or press-drag-release to stamp the chosen signature. Select to resize.",
+    "Click or press-drag-release to place the signature once.",
 };
 function setTool(value: string) {
   finishText();
@@ -756,7 +788,8 @@ function drawAdditions(draft?: Addition) {
     const group = el("g", {
       "data-object": item.id,
       "data-kind": item.kind,
-      tabindex: tool === "select" ? 0 : -1,
+      tabindex:
+        tool === "select" || (tool === "image" && item.kind === "image") ? 0 : -1,
       role: "button",
       "aria-label": `${kindName} addition. Arrow keys move; Delete removes.`,
     });
@@ -913,6 +946,7 @@ function showSelection() {
       item.kind !== "image" &&
       item.kind !== "text",
     textColor = item?.kind === "text";
+  $("context-bar").dataset.selection = item?.kind || "";
   $("color-label").hidden = !(
     ["pen", "highlight", "tick", "circle"].includes(tool) ||
     styleable ||
@@ -932,7 +966,7 @@ function showSelection() {
       item.kind === "text"
         ? "Type below. Wrap width controls line breaks; the outline follows the words. Delete removes it."
         : item.kind === "image"
-          ? "Drag to move. Corner handle resizes proportionally. Delete removes it."
+          ? "Drag to move or resize at the corner."
           : "Drag to move. Corner handle resizes. Delete removes it.";
   }
   if (item?.kind === "text") {
@@ -955,8 +989,48 @@ function newItem(kind: Addition["kind"]): Addition {
     size: kind === "text" ? 14 : Number($<HTMLSelectElement>("size").value),
   };
 }
+function signaturePlacement(point: Point, stamp: SignatureStamp): Addition {
+  const viewport = doc!.viewports[pageIndex];
+  return {
+    ...newItem("image"),
+    ...imagePlacement(
+      point,
+      stamp.ratio,
+      viewport.width,
+      viewport.height,
+      signatureScale,
+    ),
+    image: stamp.image,
+  };
+}
+function commitSignature(
+  item: Addition,
+  stamp: SignatureStamp,
+  keepStamping: boolean,
+) {
+  remember();
+  state.additions.push(item);
+  if (!reuseSignature) {
+    signatures = signatures.filter((entry) => entry.id !== stamp.id);
+    if (selectedSignature === stamp.id) selectedSignature = "";
+    renderSignaturePicker();
+  }
+  if (!keepStamping) tool = "select";
+  selected = item.id;
+  showSelection();
+  drawAdditions();
+}
+function focusPlacedSignature(item: Addition) {
+  document
+    .querySelector<SVGGElement>(`[data-object="${item.id}"]`)
+    ?.focus();
+}
 function placementFor(kind: Addition["kind"], point: Point): Addition | null {
   if (!doc) return null;
+  if (kind === "image") {
+    const stamp = chosenSignature();
+    return stamp ? signaturePlacement(point, stamp) : null;
+  }
   const viewport = doc.viewports[pageIndex],
     item = newItem(kind);
   if (kind === "tick") {
@@ -966,20 +1040,6 @@ function placementFor(kind: Addition["kind"], point: Point): Addition | null {
     Object.assign(
       item,
       defaultCirclePlacement(point, viewport.width, viewport.height),
-    );
-  } else if (kind === "image") {
-    const stamp = signatures.find((s) => s.id === selectedSignature);
-    if (!stamp) return null;
-    item.image = stamp.image;
-    Object.assign(
-      item,
-      imagePlacement(
-        point,
-        stamp.ratio,
-        viewport.width,
-        viewport.height,
-        signatureScale,
-      ),
     );
   } else if (kind === "text") {
     Object.assign(
@@ -997,8 +1057,15 @@ function place(point: Point) {
       true,
     );
   const kind = tool === "image" ? "image" : tool === "tick" ? "tick" : "text";
-  if (kind === "image" && !signatures.some((s) => s.id === selectedSignature))
-    return openSignaturePicker();
+  if (kind === "image") {
+    const stamp = chosenSignature();
+    if (!stamp) return openSignaturePicker();
+    hidePreview();
+    const item = signaturePlacement(point, stamp);
+    commitSignature(item, stamp, reuseSignature);
+    if (!reuseSignature) focusPlacedSignature(item);
+    return;
+  }
   const item = placementFor(kind, point);
   if (!item) return;
   hidePreview();
@@ -1330,9 +1397,10 @@ let gesture:
 const pointers = new Map<number, Point>();
 let pinch: { distance: number; zoom: number; ratio: number } | undefined;
 function beginMove(event: PointerEvent, item: Addition, resize = false) {
-  if (tool !== "select") return;
+  if (busy || (tool !== "select" && !(tool === "image" && item.kind === "image"))) return;
   event.preventDefault();
   event.stopPropagation();
+  if (tool === "image") setTool("select");
   finishText();
   settleField();
   selected = item.id;
@@ -1405,7 +1473,7 @@ $("page").onpointerdown = (event) => {
   const p = point(event);
   $("page").setPointerCapture(event.pointerId);
   if (["text", "tick", "image", "circle"].includes(tool)) {
-    if (tool === "image" && !signatures.some((s) => s.id === selectedSignature))
+    if (tool === "image" && !chosenSignature())
       return openSignaturePicker();
     aiming = { id: event.pointerId, start: p, tool };
     previewPoint = p;
@@ -1468,6 +1536,14 @@ $("page").onpointermove = (event) => {
     return;
   }
   if (!gesture) {
+    if (
+      tool === "image" &&
+      event.target instanceof Element &&
+      event.target.closest('[data-kind="image"], .handle')
+    ) {
+      hidePreview();
+      return;
+    }
     if (tool !== "select" && event.pointerType !== "touch") {
       previewPoint = p;
       previewCircle = undefined;
@@ -1579,8 +1655,6 @@ function endGesture(event: PointerEvent, cancelled = false) {
     }
     previewCircle = undefined;
     place(p);
-    hidePreview();
-    drawAdditions();
     return;
   }
   if (!gesture || gesture.id !== event.pointerId) return;
@@ -1644,6 +1718,13 @@ button("clear-field").onclick = () => clearField();
 button("clear-field-inline").onclick = () =>
   clearField(button("clear-field-inline").dataset.clearField || focusedField);
 function objectKey(event: KeyboardEvent, item: Addition) {
+  if (
+    tool === "image" &&
+    item.kind === "image" &&
+    /^(Enter|Arrow(Left|Right|Up|Down)|Delete|Backspace|[+=-])$/.test(event.key)
+  ) {
+    setTool("select");
+  }
   if (tool !== "select") return;
   selected = item.id;
   if (event.key === "Delete" || event.key === "Backspace") {
@@ -1655,6 +1736,10 @@ function objectKey(event: KeyboardEvent, item: Addition) {
     event.preventDefault();
     showSelection();
     if (item.kind === "text") $<HTMLTextAreaElement>("text-content").focus();
+    if (item.kind === "image") {
+      drawAdditions();
+      focusPlacedSignature(item);
+    }
     return;
   }
   const movement: Record<string, [number, number]> = {
@@ -1841,7 +1926,7 @@ function renderSignaturePicker() {
       closeSignaturePicker();
       $("page").focus({ preventScroll: true });
       status(
-        `${entry.name} selected. Move over the page and click or press-drag-release to stamp; Select moves or resizes a placed copy.`,
+        `${entry.name} ready. Click the page to place it or drop a PDF to sign page 1.`,
       );
     };
     const image = document.createElement("img");
@@ -1881,6 +1966,9 @@ function renderSignaturePicker() {
   if (stamp) {
     $<HTMLImageElement>("signature-preview-image").src = stamp.image;
     $("signature-preview-name").textContent = stamp.name;
+  } else {
+    $("signature-preview-image").removeAttribute("src");
+    $("signature-preview-name").textContent = "";
   }
   for (const control of document.querySelectorAll<HTMLButtonElement>(
     "[data-stamp-scale]",
@@ -1956,6 +2044,10 @@ document.addEventListener(
 button("add-signature").onclick = () =>
   $<HTMLInputElement>("signature-file").click();
 button("close-signature-tray").onclick = () => closeSignaturePicker(true);
+$<HTMLInputElement>("reuse-signature").onchange = (event) => {
+  reuseSignature = (event.currentTarget as HTMLInputElement).checked;
+  syncToolChrome();
+};
 for (const control of document.querySelectorAll<HTMLButtonElement>(
   "[data-stamp-scale]",
 )) {
@@ -2061,7 +2153,7 @@ $<HTMLInputElement>("signature-file").onchange = async (event) => {
     syncToolChrome();
     $("page").focus({ preventScroll: true });
     status(
-      "Signature added and selected. Move over the page and click or press-drag-release to stamp; the picker keeps it for this tab only.",
+      "Signature ready. Click the page to place it or drop a PDF to sign page 1.",
     );
   } catch (e) {
     status(
@@ -2310,24 +2402,34 @@ let dragDepth = 0;
 window.addEventListener("dragenter", (e) => {
   if (e.dataTransfer?.types.includes("Files")) {
     e.preventDefault();
-    if (propertiesDialog.open) return;
+    if (propertiesDialog.open || replaceDialog.open || busy) return;
     dragDepth++;
-    document.body.classList.add("dragging");
+    const pdf = Array.from(e.dataTransfer.items).some(
+      (item) =>
+        item.kind === "file" && (!item.type || item.type === "application/pdf"),
+    );
+    document.body.dataset.dropHint =
+      pdf && tool === "image" && chosenSignature()
+        ? "Drop PDF to place your signature on page 1"
+        : "Drop a PDF to open it";
   }
 });
 window.addEventListener("dragover", (e) => e.preventDefault());
 window.addEventListener("dragleave", () => {
-  if (--dragDepth <= 0) document.body.classList.remove("dragging");
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (!dragDepth) delete document.body.dataset.dropHint;
 });
 window.addEventListener("drop", (e) => {
   e.preventDefault();
   dragDepth = 0;
-  document.body.classList.remove("dragging");
+  delete document.body.dataset.dropHint;
   const file = e.dataTransfer?.files[0];
-  if (file)
-    requestOpen(() => {
-      void loadFile(file);
-    });
+  if (!file || busy || replaceDialog.open) return;
+  const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+  const stamp = isPdf && tool === "image" ? chosenSignature() : undefined;
+  requestOpen(() => {
+    void loadFile(file, stamp);
+  });
 });
 async function boot() {
   try {

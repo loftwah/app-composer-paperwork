@@ -81,7 +81,7 @@ const paths = [
   ...["linkarooie", "herethere", "linkcheck", "hello", "carryforward"].map(
     (name) => `/brand/apps/${name}-small-20261018.webp`,
   ),
-  "/brand/apps/ldraw-tile-c9c2339a1296-d2e0dc4b-r2-96.webp",
+  "/brand/apps/ldraw-tile-fa7a2ab6171c-010cfbd2-r2-96.webp",
   "/build.json",
   "/",
   "/help.html",

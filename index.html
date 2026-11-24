@@ -263,10 +263,10 @@
             >
               <span id="signature-size-label">New stamp size</span>
               <div class="signature-size-options">
-                <button type="button" data-stamp-scale="0.7" aria-pressed="false">
+                <button type="button" data-stamp-scale="0.7" aria-pressed="true">
                   Small
                 </button>
-                <button type="button" data-stamp-scale="1" aria-pressed="true">
+                <button type="button" data-stamp-scale="1" aria-pressed="false">
                   Medium
                 </button>
                 <button type="button" data-stamp-scale="1.45" aria-pressed="false">
@@ -274,13 +274,15 @@
                 </button>
               </div>
             </div>
+            <label class="signature-reuse">
+              <input id="reuse-signature" type="checkbox" autocomplete="off" />
+              Reuse signatures in this tab
+            </label>
             <div class="signature-picker-actions">
               <button id="add-signature" type="button" class="primary">
                 Add PNG
               </button>
-              <span class="signature-note"
-                >Applies to new stamps · this tab only</span
-              >
+              <span class="signature-note">Default is one placement per upload.</span>
             </div>
           </section>
           <div class="history">

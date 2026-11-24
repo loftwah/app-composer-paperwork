@@ -160,22 +160,14 @@ async function checkLdrawAppsMenu(page, label, open) {
     label + ": LDraw links to its own application",
   );
   const tile = row.locator("img");
+  const tilePath = "/brand/apps/ldraw-tile-fa7a2ab6171c-010cfbd2-r2-96.webp";
   assert.equal(
     await tile.getAttribute("src"),
-    "/brand/apps/ldraw-tile-c9c2339a1296-d2e0dc4b-r2-96.webp",
+    new URL(tilePath, page.url()).href,
     label + ": the local tile is used",
   );
   assert.equal(await tile.getAttribute("alt"), "");
-  await page.waitForFunction(
-    () =>
-      [
-        ...document.querySelectorAll(
-          '#app-navigation [data-destination] img[src$="ldraw-tile-c9c2339a1296-d2e0dc4b-r2-96.webp"]',
-        ),
-      ].some((img) => img.complete && img.naturalWidth > 0),
-    null,
-    { timeout: 10000 },
-  );
+  await tile.evaluate((img) => img.decode());
   const decoded = await tile.evaluate((img) => ({
     width: img.naturalWidth,
     height: img.naturalHeight,
@@ -186,7 +178,7 @@ async function checkLdrawAppsMenu(page, label, open) {
   );
   assert.equal(
     (await dialog.locator('[role="status"]').textContent()).trim(),
-    "1 destination",
+    "1 result",
   );
   // Arrow keys select the visible result; ordinary typing returns to search.
   await dialog.locator("[data-close-apps]").focus();
@@ -221,7 +213,7 @@ async function checkLdrawAppsMenu(page, label, open) {
   return {
     search: "LDraw",
     visible_app_rows: 1,
-    status: "1 destination",
+    status: "1 result",
     href: "https://ldraw.loftwah.com/",
     tile: decoded,
     keyboard: "ArrowDown selects, typing returns to search, Escape closes",
@@ -637,6 +629,7 @@ try {
     "Signature opens a floating picker",
   );
   await page.screenshot({ path: output + "/signature-picker-empty.png" });
+  await page.locator("#reuse-signature").check();
   await assertStationary(signatureLayout, "Opening the signature picker");
   await addSignatureFile(fixture + "/demo-signature-transparent.png");
   await page.waitForFunction(
@@ -650,6 +643,16 @@ try {
   );
   await assertStationary(signatureLayout, "Importing a signature");
   await tap(150, 640);
+  // Adjust the new compact signature into the fixture's designated ROI.
+  const signatureGrip = page.locator("#additions .handle");
+  await signatureGrip.scrollIntoViewIfNeeded();
+  const firstGrip = await signatureGrip.boundingBox();
+  const gripX = firstGrip.x + firstGrip.width / 2,
+    gripY = firstGrip.y + firstGrip.height / 2;
+  await page.mouse.move(gripX, gripY);
+  await page.mouse.down();
+  await page.mouse.move(gripX + 45, gripY + 15, { steps: 6 });
+  await page.mouse.up();
   const secondSignatureLayout = await layoutNow();
   await page.locator("#signature").click();
   assert.equal(
