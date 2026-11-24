@@ -292,6 +292,74 @@ const assertSameBounds = (actual, expected, label) => {
       `${label}: the ghost and committed ${key} differ`,
     );
 };
+async function dropPdf(page, file, expectedHint) {
+  const dataTransfer = await page.evaluateHandle(
+    ({ bytes, name }) => {
+      const transfer = new DataTransfer();
+      transfer.items.add(
+        new File([new Uint8Array(bytes)], name, { type: "application/pdf" }),
+      );
+      return transfer;
+    },
+    { bytes: [...readFileSync(file)], name: path.basename(file) },
+  );
+  await page.locator("#workspace").dispatchEvent("dragenter", { dataTransfer });
+  assert.equal(await page.locator("body").getAttribute("data-drop-hint"), expectedHint);
+  await page.locator("#workspace").dispatchEvent("drop", { dataTransfer });
+  await dataTransfer.dispose();
+}
+async function singleUseJourney(page) {
+  const images = page.locator('#additions [data-kind="image"]');
+  const repeat = page.locator("#reuse-signature");
+  await openPicker(page);
+  assert.equal(await repeat.isChecked(), false);
+  await importSignature(page, firstSignature, 1);
+  const ghost = await clickAt(page, await pagePoint(page, 0.45, 0.45));
+  const original = await imageBounds(page);
+  assertSameBounds(original, ghost, "default signature");
+  assert(original.w <= 70 && original.h <= 30, "The default signature is compact");
+  assert.equal(await page.locator("#page").getAttribute("data-tool"), "select");
+  assert.equal(await page.locator("#signature-list li").count(), 0);
+  assert(await page.locator("#additions .handle").isVisible());
+  await page.keyboard.press("+");
+  assert((await imageBounds(page)).w > original.w, "The selected signature resizes immediately");
+  await clickAt(page, await pagePoint(page, 0.7, 0.2));
+  assert.equal(await images.count(), 1, "A second click must not sign again");
+
+  await importSignature(page, secondSignature, 1);
+  const signHint = "Drop PDF to place your signature on page 1";
+  const garden = "public/examples/garden-form.pdf";
+  await dropPdf(page, garden, signHint);
+  await page.locator("#cancel-replace").click();
+  assert.equal(await images.count(), 1, "Cancel keeps the current document edits");
+  assert.equal(await page.locator("#signature-list li").count(), 1, "Cancel keeps the armed signature");
+
+  await dropPdf(page, fixtureDirectory + "/negative-truncated.pdf", signHint);
+  await page.locator("#confirm-replace").click();
+  await page.locator("#status.error").waitFor();
+  assert.equal(await images.count(), 1, "A failed drop keeps the current document edits");
+  assert.equal(await page.locator("#signature-list li").count(), 1, "A failed drop keeps the armed signature");
+
+  await dropPdf(page, garden, signHint);
+  await page.locator("#confirm-replace").click();
+  await page.locator("#filename", { hasText: "garden-form.pdf" }).waitFor();
+  await ready(page, 0);
+  await page.locator("#additions .handle").waitFor();
+  assert.equal(await images.count(), 1, "A successful drop adds the signature once");
+  assert.equal(await page.locator("#signature-list li").count(), 0);
+  await page.screenshot({ path: output + "/desktop-dropped-pdf-selected.png" });
+  await page.locator("#undo").click();
+  assert.equal(await images.count(), 0, "Undo removes the dropped signature");
+  await page.locator("#redo").click();
+  assert.equal(await images.count(), 1, "Redo restores the placed copy");
+  assert.equal(await page.locator("#signature-list li").count(), 0, "Redo does not re-arm the signature");
+  await dropPdf(page, fixture, "Drop a PDF to open it");
+  await page.locator("#confirm-replace").click();
+  await page.locator("#filename", { hasText: path.basename(fixture) }).waitFor();
+  await ready(page, 0);
+  assert.equal(await images.count(), 0, "An ordinary drop only opens the PDF");
+  receipt.checks.single_use_and_pdf_drop = "pass";
+}
 async function desktopJourney() {
   const context = await browser.newContext({
     viewport: { width: 1440, height: 1000 },
@@ -307,6 +375,10 @@ async function desktopJourney() {
   await page.goto(origin);
   await page.locator("#pdf-file").setInputFiles(fixture);
   await ready(page, 0);
+  await singleUseJourney(page);
+  await page.reload();
+  await page.locator("#pdf-file").setInputFiles(fixture);
+  await ready(page, 0);
   let baseline = await boxes(page);
 
   // 1. Click Signature: a floating picker, not an expanding toolbar or a
@@ -318,6 +390,7 @@ async function desktopJourney() {
   assert.equal(fileChooserOpened, false, "Opening the picker is not a file chooser");
   await assertStationary(page, baseline, "desktop: open empty picker");
   await page.screenshot({ path: output + "/desktop-1-empty-picker.png" });
+  await page.locator("#reuse-signature").check();
 
   // 2. Import the first fictional transparent signature.
   await importSignature(page, firstSignature, 1);
@@ -393,7 +466,7 @@ async function desktopJourney() {
   let ghost = await clickAt(page, point);
   let last = await imageBounds(page);
   assertSameBounds(last, ghost, "desktop small stamp");
-  assert(last.w < 180, "Small stamps start below the default width");
+  assert(last.w <= 70, "Small stamps start with a compact footprint");
   await page.mouse.move(point.x + 2, point.y + 2);
   await page.waitForTimeout(80);
   await page.screenshot({ path: output + "/desktop-3-placement-ghost.png" });
@@ -744,6 +817,7 @@ async function phoneJourney() {
     "The phone picker sits above the page controls",
   );
   await page.screenshot({ path: output + "/phone-1-picker.png" });
+  await page.locator("#reuse-signature").check();
   await page.locator("#signature-file").setInputFiles(firstSignature);
   await page.waitForFunction(
     () => document.querySelector("#page").dataset.tool === "image",
@@ -790,7 +864,7 @@ async function phoneJourney() {
   await page.screenshot({ path: output + "/phone-3-touch-stamped.png" });
 
   // Repeating never reopens the picker.
-  const repeat = await pagePoint(page, 0.55, 0.42);
+  const repeat = await pagePoint(page, 0.76, 0.42);
   await page.touchscreen.tap(repeat.x, repeat.y);
   await page.waitForFunction(
     () => document.querySelectorAll('#additions [data-kind="image"]').length === 2,

@@ -19,8 +19,7 @@ is provisional, never exported or selectable. Mouse clicks and touch
 press-drag-release use the same clamped page geometry, so an edge or zoom does
 not move the mark after placement. Circle is a true ring, not a freehand loop.
 
-Text, Tick, Circle and Signature stay active after placement; Select, V or
-Escape exits. Done commits the current text without changing tools. Selection
+Text, Tick and Circle stay active after placement. Select, V or Escape exits. Done commits the current text without changing tools. Selection
 outlines hug the rendered words, painted tick/ring/ink and alpha-trimmed
 signature, while a separate finger-sized hit box preserves touch picking. Text
 wrap width is explicit, so manual multiline wrapping does not force a giant
@@ -29,9 +28,11 @@ selection box.
 Signature is a floating in-memory picker, not an expanding toolbar row. It
 opens over the page without reflowing the document, shows the real transparent
 PNG at a useful size, offers Small/Medium/Large for new stamps, and closes as
-soon as a stamp is chosen while the compact Signature control keeps the
-selected image visible. It holds multiple PNGs; removing a picker stamp leaves
-placed copies. The placement ghost is the actual image with a tight dashed
+soon as a stamp is chosen. New signatures start Small and clear from the picker
+after placement by default. Reuse in this tab keeps the stamp available.
+Placement selects the signature with a resize handle. When Signature is active,
+the PDF drop prompt says that the signature will be placed on page 1. Removing
+a picker stamp leaves placed copies. The placement ghost is the actual image with a tight dashed
 frame, so hover and touch show the committed bounds. Touch press-drag-release
 adds a lifted preview above the finger. A fixed-height tool strip always sits
 below the toolbar; the page starts below it. Switching Select, Eraser, Tick or

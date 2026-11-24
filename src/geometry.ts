@@ -182,15 +182,13 @@ export function imagePlacement(
   pageHeight: number,
   scale = 1,
 ): Rect {
-  const base = Math.min(180, pageWidth * 0.45, pageHeight * 0.3 * ratio),
-    maxWidth = Math.min(pageWidth * 0.9, pageHeight * 0.8 * ratio);
-  let width = Math.min(maxWidth, Math.max(24, base * (scale || 1)));
-  let height = width / ratio;
-  if (height > pageHeight * 0.8) {
-    height = pageHeight * 0.8;
-    width = height * ratio;
-  }
-  return centeredBox(width, height, point, pageWidth, pageHeight);
+  const width = Math.min(
+    90 * scale,
+    40 * scale * ratio,
+    pageWidth * 0.45,
+    pageHeight * 0.3 * ratio,
+  );
+  return centeredBox(width, width / ratio, point, pageWidth, pageHeight);
 }
 
 export function textPlacement(

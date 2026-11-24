@@ -672,6 +672,17 @@ input {
 .page[data-tool="select"] .additions [data-object] {
   touch-action: none;
 }
+.page[data-tool="image"] .additions {
+  z-index: 2;
+}
+.page[data-tool="image"] .additions [data-object] {
+  pointer-events: none;
+}
+.page[data-tool="image"] .additions [data-kind="image"],
+.page[data-tool="image"] .additions .handle {
+  pointer-events: all;
+  touch-action: none;
+}
 .page-bar {
   display: flex;
   justify-content: space-between;
@@ -979,6 +990,21 @@ input {
 .signature-size-options button:disabled {
   opacity: 0.45;
 }
+.signature-reuse {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.signature-reuse input {
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  margin: 0;
+  accent-color: var(--accent);
+}
 .signature-picker-actions {
   display: flex;
   align-items: center;
@@ -992,7 +1018,7 @@ input {
   padding: 6px 14px;
 }
 .signature-note {
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.35;
   color: var(--muted);
 }
@@ -1124,8 +1150,8 @@ dialog h2 {
   justify-content: space-between;
   margin-top: 20px;
 }
-body.dragging:after {
-  content: "Drop your PDF to open it";
+body[data-drop-hint]::after {
+  content: attr(data-drop-hint);
   position: fixed;
   inset: 12px;
   background: var(--bg);
@@ -1135,6 +1161,8 @@ body.dragging:after {
   place-items: center;
   z-index: 20;
   font-size: 24px;
+  padding: 16px;
+  text-align: center;
   pointer-events: none;
 }
 [hidden] {
@@ -1259,6 +1287,10 @@ body.dragging:after {
     gap: 6px;
     flex-basis: 100%;
     justify-content: space-between;
+  }
+  .context-bar[data-selection="image"] {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
   .context-copy {
     display: grid;
@@ -1401,9 +1433,6 @@ body.dragging:after {
   }
   #add-signature {
     min-height: 44px;
-  }
-  .signature-note {
-    font-size: 9px;
   }
   .tools button .signature-button-thumb {
     width: 38px;
