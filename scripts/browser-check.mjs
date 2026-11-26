@@ -220,32 +220,114 @@ async function checkLdrawAppsMenu(page, label, open) {
     screenshot: path.basename(screenshot),
   };
 }
-try {
-  await new Promise((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      server.removeListener("error", reject);
-      resolve();
-    });
+async function checkReplacementRecovery(browser, base, label, options) {
+  const context = await browser.newContext({ ...options, acceptDownloads: true });
+  const page = (activePage = await context.newPage());
+  const originalName = path.basename(file);
+  const replacement = path.resolve("public/examples/garden-form.pdf");
+  const nameField = page.locator('[data-field="full_name"]');
+  const referenceField = page.locator('[data-field="reference_code"]');
+  const mark = page.locator('#additions [data-kind="text"]');
+  const undo = page.locator("#undo:visible, #undo-mobile:visible");
+  const redo = page.locator("#redo:visible, #redo-mobile:visible");
+  const renderReady = () => page.waitForFunction(() => {
+    const editorPage = document.getElementById("page");
+    return editorPage.dataset.rendered === "0" && !editorPage.inert &&
+      !document.getElementById("open").disabled;
   });
-  const base =
-    process.env.PAPERWORK_ORIGIN ||
-    `http://127.0.0.1:${server.address().port}`;
-  receipt.url = base;
-  receipt.source_sha = execFileSync("git", ["rev-parse", "HEAD"], {
-    encoding: "utf8",
-  }).trim();
-  const browser = await launchBrowser(chromium, {
-    headless: true,
-    ...(process.env.PLAYWRIGHT_CHROMIUM
-      ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM }
-      : { channel: "chrome" }),
-    // This module owns SIGINT/SIGTERM teardown. Playwright's default handlers
-    // would close the browser and exit before our cleanup wrote the receipt.
-    handleSIGINT: false,
-    handleSIGTERM: false,
+  const openReplacement = async () => {
+    await page.locator("#open").click();
+    const chooser = page.waitForEvent("filechooser");
+    await page.locator("#confirm-replace").click();
+    await (await chooser).setFiles(replacement);
+  };
+
+  await page.goto(base);
+  await page.locator("#pdf-file").setInputFiles(file);
+  await renderReady();
+  await nameField.fill("Fictional retained name");
+  const originalReference = await referenceField.inputValue();
+  await page.locator('[data-tool="text"]').click();
+  await page.locator("#surface").click({ position: { x: 45, y: 73 } });
+  await page.locator("#text-content").fill("Fictional retained mark");
+  await page.locator("#finish-text").click();
+  await page.locator('[data-tool="select"]').click();
+  await referenceField.fill("LAB-9999");
+  await referenceField.press("Tab");
+  await undo.click();
+  assert.equal(await referenceField.inputValue(), originalReference);
+  assert.equal(await mark.count(), 1);
+  assert(await redo.isEnabled());
+
+  const originalCanvas = await page.locator("#canvas").elementHandle();
+  const originalGeometry = await page.locator("#page").getAttribute("style");
+  await page.evaluate(() => {
+    const getContext = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function (...args) {
+      if (!this.isConnected && this.width > 200 && args[0] === "2d") {
+        HTMLCanvasElement.prototype.getContext = getContext;
+        window.paperworkCandidateFailed = true;
+        throw new Error("Controlled first-render failure");
+      }
+      return getContext.apply(this, args);
+    };
   });
-  receipt.browser = browser.version();
+  await openReplacement();
+  await page.waitForFunction(() =>
+    window.paperworkCandidateFailed && !document.getElementById("open").disabled,
+  );
+  assert.equal(await page.locator("#filename").textContent(), originalName);
+  assert.equal(await page.locator("#page").getAttribute("style"), originalGeometry);
+  assert(await originalCanvas.evaluate((canvas) => canvas === document.getElementById("canvas")));
+  await renderReady();
+  assert.equal(await page.locator("#document-state").getAttribute("data-state"), "changed");
+  assert.equal(await nameField.inputValue(), "Fictional retained name");
+  assert.equal(await mark.count(), 1);
+  assert.match(await page.locator("#status").textContent(), /first page.*different PDF or a new copy/);
+  await page.screenshot({ path: output + "/replacement-recovery-" + label + ".png" });
+
+  await undo.click();
+  assert.equal(await mark.count(), 0);
+  await redo.click();
+  assert.equal(await mark.count(), 1);
+  await redo.click();
+  assert.equal(await referenceField.inputValue(), "LAB-9999");
+  await nameField.fill("Fictional verified name");
+  await page.locator("#page").focus();
+  const download = page.waitForEvent("download");
+  if (options.hasTouch) await page.locator("#save").tap();
+  else await page.locator("#save").click();
+  const completedPath = output + "/replacement-recovery-" + label + ".pdf";
+  await (await download).saveAs(completedPath);
+  const bytes = readFileSync(completedPath);
+  const completed = await PDFDocument.load(bytes);
+  assert.equal(completed.getForm().getTextField("full_name").getText(), "Fictional verified name");
+  assert.equal(completed.getForm().getTextField("reference_code").getText(), "LAB-9999");
+  const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const task = getDocument({
+    data: new Uint8Array(bytes),
+    standardFontDataUrl: path.resolve("node_modules/pdfjs-dist/standard_fonts") + "/",
+  });
+  try {
+    const independentlyOpened = await task.promise;
+    const content = await (await independentlyOpened.getPage(1)).getTextContent();
+    assert(content.items.map((item) => item.str).join(" ").includes("Fictional retained mark"));
+  } finally {
+    await task.destroy();
+  }
+
+  await nameField.fill("Fictional confirmation");
+  await nameField.press("Tab");
+  await openReplacement();
+  await page.waitForFunction(() => document.getElementById("filename").textContent === "garden-form.pdf");
+  await renderReady();
+  assert.equal(await page.locator("#document-state").getAttribute("data-state"), "ready");
+  assert.equal(await mark.count(), 0);
+  receipt.checks["open_render_failure_preserves_work_" + label] = "pass";
+  await context.close();
+}
+
+async function checkAll(browser, base) {
   const context = await browser.newContext({
     viewport: { width: 1440, height: 1000 },
     acceptDownloads: true,
@@ -1295,6 +1377,42 @@ try {
     "Fictional Phone Editor",
   );
   receipt.checks.phone_properties_export = "pass";
+}
+try {
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.removeListener("error", reject);
+      resolve();
+    });
+  });
+  const base =
+    process.env.PAPERWORK_ORIGIN ||
+    `http://127.0.0.1:${server.address().port}`;
+  receipt.url = base;
+  receipt.source_sha = execFileSync("git", ["rev-parse", "HEAD"], {
+    encoding: "utf8",
+  }).trim();
+  // This module owns SIGINT/SIGTERM teardown for both browser engines.
+  const launchOptions = { headless: true, handleSIGINT: false, handleSIGTERM: false };
+  const browser = await launchBrowser(chromium, {
+    ...launchOptions,
+    ...(process.env.PLAYWRIGHT_CHROMIUM
+      ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM }
+      : { channel: "chrome" }),
+  });
+  receipt.browser = browser.version();
+  if (process.env.PAPERWORK_REPLACEMENT_ONLY !== "1") await checkAll(browser, base);
+  await checkReplacementRecovery(browser, base, "desktop", {
+    viewport: { width: 1440, height: 900 },
+  });
+  const replacementPhone = await launchBrowser(webkit, launchOptions);
+  await checkReplacementRecovery(replacementPhone, base, "phone", {
+    viewport: { width: 390, height: 844 },
+    deviceScaleFactor: 2,
+    isMobile: true,
+    hasTouch: true,
+  });
   console.log(JSON.stringify(receipt, null, 2));
 } catch (error) {
   receipt.failure = error.stack;
