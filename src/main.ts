@@ -452,6 +452,54 @@ async function loadFile(file: File, stamp?: SignatureStamp) {
     );
   await load(new Uint8Array(await file.arrayBuffer()), file.name, stamp);
 }
+function measureFitZoom(viewport: OpenDocument["viewports"][number]) {
+  const editor = $("editor");
+  const wasHidden = editor.hidden;
+  if (wasHidden) {
+    editor.hidden = false;
+    editor.inert = true;
+  }
+  const zoom = Math.min(
+    1.5,
+    Math.max(
+      0.15,
+      ($("workspace").clientWidth - (innerWidth < 700 ? 22 : 60)) /
+        viewport.width,
+    ),
+  );
+  if (wasHidden) {
+    editor.hidden = true;
+    editor.inert = false;
+  }
+  return zoom;
+}
+
+async function renderPdfPageToCanvas(
+  source: OpenDocument,
+  index: number,
+  scale: number,
+) {
+  const viewport = source.viewports[index];
+  const pdfPage = await source.pdf.getPage(index + 1);
+  const density = Math.min(
+    devicePixelRatio || 1,
+    2,
+    Math.sqrt(
+      LIMITS.pixels / (viewport.width * viewport.height * scale * scale),
+    ),
+  );
+  const canvas = document.createElement("canvas");
+  const renderViewport = pdfPage.getViewport({ scale: scale * density });
+  canvas.width = Math.ceil(renderViewport.width);
+  canvas.height = Math.ceil(renderViewport.height);
+  await pdfPage.render({
+    canvas,
+    viewport: renderViewport,
+    annotationMode: 2,
+  }).promise;
+  return canvas;
+}
+
 async function load(bytes: Uint8Array, name: string, stamp?: SignatureStamp) {
   if (busy) return;
   busy = true;
@@ -459,6 +507,27 @@ async function load(bytes: Uint8Array, name: string, stamp?: SignatureStamp) {
   status("Opening your PDF…");
   try {
     const next = await openDocument(bytes, name);
+    const candidateZoom = measureFitZoom(next.viewports[0]);
+
+    let canvas: HTMLCanvasElement;
+    try {
+      canvas = await renderPdfPageToCanvas(next, 0, candidateZoom);
+    } catch {
+      try {
+        await next.pdf.loadingTask.destroy();
+      } catch {
+        // Dispose only the failed candidate.
+      }
+      showOpenError(
+        doc
+          ? "This PDF’s first page couldn’t be displayed. Your current work is still here. Try a different PDF or a new copy."
+          : "This PDF’s first page couldn’t be displayed. Try a different PDF or a new copy.",
+      );
+      return;
+    }
+
+    // Retire any in-flight page work before adopting the candidate.
+    renderGeneration++;
     const old = doc;
     doc = next;
     state = clone(next.initial);
@@ -468,8 +537,10 @@ async function load(bytes: Uint8Array, name: string, stamp?: SignatureStamp) {
     failed = false;
     selected = "";
     pageIndex = 0;
-    lastSaved = "";
+    zoom = candidateZoom;
     zoomMode = "fit";
+    lastSaved = "";
+
     revokeOutput();
     hidePreview();
     $("welcome").hidden = true;
@@ -477,18 +548,23 @@ async function load(bytes: Uint8Array, name: string, stamp?: SignatureStamp) {
     $("editor").hidden = false;
     $("filename").textContent = name;
     $("filename").title = name;
-    button("save").disabled = false;
-    button("print").disabled = false;
     $<HTMLSelectElement>("page-number").replaceChildren(
       ...next.viewports.map((_, i) => new Option(String(i + 1), String(i))),
     );
     $("page-count").textContent = `of ${next.viewports.length}`;
-    fit();
+    preparePage(next, 0, candidateZoom);
+    displayPage(canvas, 0);
     setTool("select");
     updateHistory();
-    await renderPage();
-    await old?.pdf.loadingTask.destroy();
-    if ($("page").inert) return;
+
+    if (old) {
+      try {
+        await old.pdf.loadingTask.destroy();
+      } catch {
+        // Releasing the previous task must not fail an otherwise successful open.
+      }
+    }
+
     if (stamp) {
       const viewport = next.viewports[0];
       const item = signaturePlacement(
@@ -524,25 +600,10 @@ async function load(bytes: Uint8Array, name: string, stamp?: SignatureStamp) {
 }
 function fit() {
   if (!doc) return;
-  const viewport = doc.viewports[pageIndex];
-  zoom = Math.min(
-    1.5,
-    Math.max(
-      0.15,
-      ($("workspace").clientWidth - (innerWidth < 700 ? 22 : 60)) /
-        viewport.width,
-    ),
-  );
+  zoom = measureFitZoom(doc.viewports[pageIndex]);
 }
-async function renderPage() {
-  if (!doc) return;
-  $("page").setAttribute("aria-busy", "true");
-  $("page").inert = true;
-  const generation = ++renderGeneration,
-    source = doc,
-    index = pageIndex,
-    viewport = source.viewports[index],
-    scale = zoom;
+function preparePage(source: OpenDocument, index: number, scale: number) {
+  const viewport = source.viewports[index];
   $("page").style.width = `${viewport.width * scale}px`;
   $("page").style.height = `${viewport.height * scale}px`;
   $("page").setAttribute(
@@ -553,34 +614,29 @@ async function renderPage() {
   $<HTMLSelectElement>("page-number").value = String(index);
   button("previous").disabled = index === 0;
   button("next").disabled = index === source.viewports.length - 1;
-  const pdfPage = await source.pdf.getPage(index + 1);
-  if (generation !== renderGeneration) return;
-  const density = Math.min(
-    devicePixelRatio || 1,
-    2,
-    Math.sqrt(
-      LIMITS.pixels / (viewport.width * viewport.height * scale * scale),
-    ),
-  );
-  const canvas = document.createElement("canvas");
-  const renderViewport = pdfPage.getViewport({ scale: scale * density });
-  canvas.width = Math.ceil(renderViewport.width);
-  canvas.height = Math.ceil(renderViewport.height);
+}
+function displayPage(canvas: HTMLCanvasElement, index: number) {
+  canvas.id = "canvas";
+  $("canvas").replaceWith(canvas);
+  renderFields();
+  drawAdditions();
+  $("page").inert = false;
+  $("page").setAttribute("aria-busy", "false");
+  $("page").dataset.rendered = String(index);
+}
+async function renderPage() {
+  if (!doc) return;
+  $("page").setAttribute("aria-busy", "true");
+  $("page").inert = true;
+  const generation = ++renderGeneration,
+    source = doc,
+    index = pageIndex,
+    scale = zoom;
+  preparePage(source, index, scale);
   try {
-    await pdfPage.render({
-      canvas,
-      viewport: renderViewport,
-      annotationMode: 2,
-    }).promise;
-    if (generation !== renderGeneration) return;
-    canvas.id = "canvas";
-    $("canvas").replaceWith(canvas);
-    renderFields();
-    drawAdditions();
-    $("page").inert = false;
-    $("page").setAttribute("aria-busy", "false");
-    $("page").dataset.rendered = String(index);
-  } catch (e) {
+    const canvas = await renderPdfPageToCanvas(source, index, scale);
+    if (generation === renderGeneration) displayPage(canvas, index);
+  } catch {
     if (generation === renderGeneration)
       status(
         "This page could not render. Your edits are retained. Try another page or document.",
