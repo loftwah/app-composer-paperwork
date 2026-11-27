@@ -227,40 +227,62 @@ body:not(.has-document) .header-actions :is(#open, #save, #print) {
   padding: 60px 40px;
 }
 .start h1 {
-  font-size: clamp(2.25rem, 4.2vw, 3.6rem);
-  font-weight: 600;
-  line-height: 1.08;
-  letter-spacing: -0.035em;
-  margin: 0 0 26px;
-  max-width: 17ch;
+  font-size: clamp(2.6rem, 5.3vw, 4.6rem);
+  font-weight: 650;
+  line-height: .98;
+  letter-spacing: -0.04em;
+  margin: 0 0 16px;
+  max-width: 12ch;
   text-wrap: balance;
 }
 .start > p {
   font-size: 18px;
-  line-height: 1.6;
+  line-height: 1.55;
   color: var(--muted);
+  max-width: 41ch;
+  margin: 0;
+}
+.paper-intake {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 12px;
+  min-height: 144px;
+  margin-top: 26px;
+  padding: 16px;
+  border: 1px dashed var(--muted);
+  border-radius: 12px;
+  background: var(--surface);
+  text-align: center;
+}
+body[data-drop-hint] .paper-intake { border-color: var(--accent); }
+.paper-intake button {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 9px 23px;
+  font-size: 16px;
+}
+.paper-intake p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
 }
 .start-actions {
   display: flex;
-  gap: 12px;
-  margin: 30px 0;
-}
-.start-actions button {
-  min-height: 52px;
-  padding: 12px 22px;
-  font-size: 16px;
-  display: flex;
-  gap: 16px;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 12px 0 16px;
 }
-.start p.privacy {
+.start-actions button { min-height: 44px; }
+.start .privacy {
+  flex: 1 1 12rem;
+  margin: 0;
+  color: var(--muted);
   font-size: 14px;
-  line-height: 1.7;
-  margin-top: 28px;
-}
-.start #drop-hint {
-  font-size: 12px;
-  margin-top: 22px;
+  line-height: 1.45;
 }
 .import-help {
   display: flex;
@@ -1236,13 +1258,10 @@ body[data-drop-hint]::after {
     padding: 44px 22px;
   }
   .start h1 {
-    font-size: 38px;
+    font-size: clamp(2.5rem, 10vw, 3.4rem);
   }
   .start > p {
     font-size: 16px;
-  }
-  .start-actions {
-    margin: 24px 0;
   }
   .press-illustration {
     max-width: 450px;
