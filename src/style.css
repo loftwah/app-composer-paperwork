@@ -1765,3 +1765,27 @@ body:not(.has-document) :is(#more-actions, .mobile-history) {
     width: 44px;
   }
 }
+
+/* The first page of the sample is the preview of the work itself. */
+.welcome .sample-preview {
+  min-width: 0;
+  margin: 0;
+  padding: clamp(.85rem, 2vw, 1.6rem);
+  background: #fc5b05;
+  color: #17181b;
+}
+.sample-preview img {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #fff;
+}
+.sample-preview figcaption a,
+.sample-preview figcaption a:hover {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-weight: 700;
+  color: #17181b;
+}
+.sample-preview a:focus-visible { outline: 2px solid #17181b; outline-offset: 2px; }

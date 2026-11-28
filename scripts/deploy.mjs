@@ -87,6 +87,7 @@ const paths = [
   "/help.html",
   "/canonical.js",
   "/artwork/press-20261024.webp",
+  "/artwork/garden-form-preview-20261128.webp",
   "/artwork/paper-bench-motion-20261114.webp",
   "/artwork/paper-bench-motion-20261114.mp4",
   "/social/paperwork-20261024.png",

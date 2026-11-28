@@ -2,9 +2,9 @@
 import { readFileSync, writeFileSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 
-export const sharePath = "/social/paperwork-20261024.png";
+export const sharePath = "/social/paperwork-sign-a-pdf-20261128.png";
 export const shareAlt =
-  "Paperwork: Fill it. Sign it. Get on with your day. An orange stamp press on charcoal.";
+  "Paperwork. Fill and sign a PDF in your browser. A real sample PDF on signature orange.";
 const description =
   "Fill PDF forms, draw, add your signature and save or print the completed PDF. Your documents and signatures stay in your browser. No account or uploads.";
 const pages = [
