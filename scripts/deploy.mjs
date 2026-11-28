@@ -5,6 +5,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { verifyStaticAssets } from "./verify-static-assets.mjs";
 import { verifySeo } from "./verify-seo.mjs";
+import { sharePath } from "./seo.mjs";
 import { createGitHubAdapter, createReleaseRun } from "./lib/release-timing.mjs";
 
 const REPO = "loftwah/app-composer-paperwork";
@@ -90,7 +91,7 @@ const paths = [
   "/artwork/garden-form-preview-20261128.webp",
   "/artwork/paper-bench-motion-20261114.webp",
   "/artwork/paper-bench-motion-20261114.mp4",
-  "/social/paperwork-20261024.png",
+  sharePath,
   "/icons/paperwork-48-20261024.png",
   "/icons/paperwork-180-20261024.png",
   "/sitemap.xml",
@@ -163,7 +164,7 @@ try {
   const seo = await stage("served SEO metadata", () =>
     verifySeo({
       origin,
-      imageBytes: readFileSync("dist/social/paperwork-20261024.png"),
+      imageBytes: readFileSync("dist" + sharePath),
     }),
   );
   console.log(JSON.stringify({ seo }));
