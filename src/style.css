@@ -1766,19 +1766,29 @@ body:not(.has-document) :is(#more-actions, .mobile-history) {
   }
 }
 
-/* The first page of the sample is the preview of the work itself. */
 .welcome .sample-preview {
   min-width: 0;
   margin: 0;
-  padding: clamp(.85rem, 2vw, 1.6rem);
+  padding: clamp(.55rem, 1.2vw, 1rem);
   background: #fc5b05;
   color: #17181b;
+}
+.sample-preview-stage {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  align-items: end;
+  background: #17181b;
 }
 .sample-preview img {
   display: block;
   width: 100%;
   height: auto;
+}
+.sample-preview .sample-press { grid-area: 1 / 1 / 2 / 11; }
+.sample-preview .sample-document {
+  grid-area: 1 / 9 / 2 / 13;
   background: #fff;
+  border: 1px solid #17181b;
 }
 .sample-preview figcaption a,
 .sample-preview figcaption a:hover {
